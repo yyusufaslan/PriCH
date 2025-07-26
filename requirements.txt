@@ -1,0 +1,5 @@
+pyinstaller
+pyperclip
+psutil
+pywin32
+spacy
