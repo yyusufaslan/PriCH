@@ -141,20 +141,23 @@ class ClipboardService:
             else:
                 # Different app - check if trusted
                 is_trusted = self.allowed_app_checker.is_trusted_app(active_window)
-                print(f"Different app - Is trusted: {is_trusted}")
+                if self.config.debugMode:
+                    print(f"Different app - Is trusted: {is_trusted}")
                 
                 if is_trusted:
                     # Trusted app - show original text
                     if state.last_given_text != state.last_original_text:
                         pyperclip.copy(state.last_original_text)
                         state.last_given_text = state.last_original_text
-                        print(f"Trusted app - showing original text")
+                        if self.config.debugMode:
+                            print(f"Trusted app - showing original text")
                 else:
                     # Untrusted app - show processed/masked text
                     if state.last_given_text != state.last_masked_text:
                         pyperclip.copy(state.last_masked_text)
                         state.last_given_text = state.last_masked_text
-                        print(f"Untrusted app - showing masked text")
+                        if self.config.debugMode:
+                            print(f"Untrusted app - showing masked text")
                         
         except Exception as e:
             import traceback

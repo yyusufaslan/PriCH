@@ -26,7 +26,8 @@ class AllowedAppChecker:
                 print("Program name is empty")
             return True  # Allow empty program names
         
-        print(f"Extracted program_name: '{program_name}' from window_title: '{window_title}'")
+        if self.config.debugMode:
+            print(f"Extracted program_name: '{program_name}' from window_title: '{window_title}'")
         
         # Check if program is in trusted list
         trusted_programs = getattr(self.config, 'trustedPrograms', [])
@@ -41,7 +42,8 @@ class AllowedAppChecker:
             if program_name.lower() in trusted_name.lower() or trusted_name.lower() in program_name.lower():
                 if trusted_program.get('deleted', True):
                     return False  # Program is deleted, not trusted
-                print(f"Program is trusted: {trusted_program.get('enabled')} - {trusted_program.get('programName')}")
+                if self.config.debugMode:
+                    print(f"Program is trusted: {trusted_program.get('enabled')} - {trusted_program.get('programName')}")
                 return trusted_program.get('enabled', True)  # Return enabled status
         return False  # Program not found in trusted list, not trusted
 

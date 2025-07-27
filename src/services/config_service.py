@@ -47,7 +47,7 @@ class ConfigService:
         self.platform_utils = PlatformUtils()
 
         # Config for dev env
-        self.debugMode = True
+        self.debugMode = False
 
     def load_config_from_database(self):
         """Load configuration from database into memory"""

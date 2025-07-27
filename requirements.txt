@@ -3,3 +3,7 @@ pyperclip
 psutil
 pywin32
 spacy
+torch
+transformers
+datasets
+accelerate
