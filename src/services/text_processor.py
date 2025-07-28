@@ -1,6 +1,6 @@
 import re
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from src.db.clipboard_repository import ClipboardRepository
 from src.services.checkers.spacy_checker import SpacyChecker
 from src.services.checkers.email_checker import EmailChecker
@@ -18,28 +18,57 @@ class TextProcessor:
         # Don't automatically load spaCy model - let it be loaded on demand
 
     def process_text(self, text: str, last_mask_mappings: List[Dict[str, Any]], active_window: str) -> str:
+        """
+        Main processing pipeline that separates code and text segments,
+        then applies appropriate processors to each segment type.
+        """
         try:
             processed_text = text
             mask_mappings = []
             timestamp = self.get_current_timestamp()
 
-            # disabled masking, just record the text then return it
+            # If masking is disabled, just record the text and return it
             if getattr(self.config, 'disable_masking', False):
                 self.db.add_entry(text, processed_text, active_window, timestamp, mask_mappings)
                 return processed_text
 
-            # Process each pattern type
-            processed_text = self.process_custom_regex(processed_text, mask_mappings)
-            print(f"processed_text custom regex:::: {processed_text}")
-            processed_text = self.process_ai(processed_text, mask_mappings)
-            print(f"processed_text ai:::: {processed_text}")
-            processed_text = self.process_emails(processed_text, mask_mappings)
-            print(f"processed_text emails:::: {processed_text}")
-            processed_text = self.process_phone_numbers(processed_text, mask_mappings)
-            print(f"processed_text phone numbers:::: {processed_text}")
-            processed_text = self.process_code(processed_text, mask_mappings)
-            print(f"processed_text code:::: {processed_text}")
+            if self.config.debugMode:
+                print(f"=== Starting text processing pipeline ===")
+                print(f"Input text length: {len(text)}")
+                print(f"Active window: {active_window}")
 
+            # Step 1: Detect and separate code and text segments
+            segments = self.segment_text(text)
+            
+            if self.config.debugMode:
+                stats = self.get_segment_statistics(segments)
+                print(f"Segmentation stats: {stats}")
+            
+            # Step 2: Process each segment with appropriate processors
+            processed_segments = []
+            for i, segment in enumerate(segments):
+                if self.config.debugMode:
+                    print(f"Processing segment {i+1}/{len(segments)}: {segment['type']}")
+                
+                processed_segment = self.process_segment(segment, mask_mappings)
+                processed_segments.append(processed_segment)
+            
+            # Step 3: Validate processing
+            if not self.validate_segment_processing(text, processed_segments):
+                print("Warning: Segment processing validation failed, using original text")
+                return text
+            
+            # Step 4: Reconstruct the final text
+            processed_text = self.reconstruct_text(processed_segments)
+            
+            # Step 5: Apply custom regex patterns (global processing)
+            processed_text = self.process_custom_regex(processed_text, mask_mappings)
+            
+            if self.config.debugMode:
+                print(f"Final processed text length: {len(processed_text)}")
+                print(f"Total mask mappings: {len(mask_mappings)}")
+                print(f"=== Text processing pipeline completed ===")
+            
             # Clear previous mappings and store new ones
             last_mask_mappings.clear()
             last_mask_mappings.extend(mask_mappings)
@@ -57,10 +86,291 @@ class TextProcessor:
             # Return original text on error
             return text
 
-    def process_custom_regex(self, processed_text: str, mask_mappings: List[Dict[str, Any]]) -> bool:
-        """Process custom regex patterns if enabled"""
+    def segment_text(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Detect and separate code and text segments from the input text.
+        Returns a list of segments with their type, content, and position information.
+        """
+        segments = []
         
-        # Check if custom regex is enabled and text is long enough
+        # Split text into potential blocks (by double newlines or significant whitespace)
+        blocks = self.split_into_blocks(text)
+        
+        if not blocks:
+            # If no blocks found, classify the entire text
+            classification = self.code_checker.code_classifier.predict_with_confidence(text)
+            segment_type = "CODE" if classification["is_code"] else "TEXT"
+            
+            segment = {
+                "type": segment_type,
+                "content": text,
+                "start_pos": 0,
+                "end_pos": len(text),
+                "confidence": classification["confidence"],
+                "processed": False
+            }
+            segments.append(segment)
+            return segments
+        
+        current_position = 0
+        
+        for block in blocks:
+            block_text = block.strip()
+            if not block_text:
+                continue
+                
+            # Classify the block as code or text
+            classification = self.code_checker.code_classifier.predict_with_confidence(block_text)
+            
+            # Use model prediction if confidence is high enough, otherwise use heuristics
+            if classification["confidence"] > 0.7:
+                segment_type = "CODE" if classification["is_code"] else "TEXT"
+            else:
+                # Fallback to heuristic-based classification
+                segment_type = self.heuristic_code_detection(block_text)
+                classification["confidence"] = 0.6  # Lower confidence for heuristic
+            
+            # Find the actual position of this block in the original text
+            start_pos = text.find(block_text, current_position)
+            if start_pos == -1:  # Fallback if not found
+                start_pos = current_position
+            end_pos = start_pos + len(block_text)
+            
+            segment = {
+                "type": segment_type,
+                "content": block_text,
+                "start_pos": start_pos,
+                "end_pos": end_pos,
+                "confidence": classification["confidence"],
+                "processed": False
+            }
+            
+            segments.append(segment)
+            current_position = end_pos
+            
+            if self.config.debugMode:
+                print(f"Segment: {segment_type} (confidence: {classification['confidence']:.2f})")
+                print(f"Content: {block_text[:100]}{'...' if len(block_text) > 100 else ''}")
+        
+        return segments
+
+    def split_into_blocks(self, text: str) -> List[str]:
+        """
+        Split text into logical blocks for classification.
+        Uses double newlines, code block markers, and other heuristics.
+        """
+        # Handle empty or very short text
+        if not text.strip():
+            return []
+        
+        # Split by double newlines first
+        blocks = re.split(r'\n\s*\n', text)
+        
+        # Further split large blocks that might contain mixed content
+        refined_blocks = []
+        for block in blocks:
+            block = block.strip()
+            if not block:
+                continue
+                
+            if len(block) > 500:  # Large block, try to split further
+                # Split by single newlines for large blocks
+                sub_blocks = [b.strip() for b in block.split('\n') if b.strip()]
+                refined_blocks.extend(sub_blocks)
+            else:
+                refined_blocks.append(block)
+        
+        # If no blocks found, treat the entire text as one block
+        if not refined_blocks:
+            refined_blocks = [text.strip()]
+        
+        return refined_blocks
+
+    def process_segment(self, segment: Dict[str, Any], mask_mappings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Process a single segment based on its type (CODE or TEXT).
+        Returns the processed segment with updated content.
+        """
+        segment_type = segment["type"]
+        content = segment["content"]
+        
+        if segment_type == "CODE":
+            return self.process_code_segment(segment, mask_mappings)
+        else:  # TEXT
+            return self.process_text_segment(segment, mask_mappings)
+
+    def process_code_segment(self, segment: Dict[str, Any], mask_mappings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Process a code segment using code-specific processors.
+        """
+        content = segment["content"]
+        processed_content = content
+        
+        # Only process if code protection is enabled
+        if self.config.code_protection_enabled:
+            try:
+                code_protection_types = getattr(self.config, 'codeProtectionTypes', [])
+                
+                # Detect language for the code segment
+                language = self.code_checker.detect_language(content)
+                
+                # Process code using the code checker
+                replacement_map = self.code_checker.process_code_blocks(content, code_protection_types, language)
+                
+                # Apply replacements and track mappings
+                for original, replacement in replacement_map.items():
+                    if self.add_to_mask_mappings(mask_mappings, original, replacement, f"CODE_{language.upper()}"):
+                        processed_content = processed_content.replace(original, replacement)
+                        if self.config.debugMode:
+                            print(f"Code masking: {original} -> {replacement}")
+            except Exception as e:
+                print(f"Error processing code segment: {e}")
+                # Continue with unprocessed content if there's an error
+        
+        # Mark segment as processed
+        segment["content"] = processed_content
+        segment["processed"] = True
+        return segment
+
+    def process_text_segment(self, segment: Dict[str, Any], mask_mappings: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Process a text segment using text-specific processors.
+        """
+        content = segment["content"]
+        processed_content = content
+        
+        # Step 1: AI-based NER processing (spaCy)
+        if self.config.ai_enabled:
+            processed_content = self.process_ai_on_text(processed_content, mask_mappings)
+        
+        # Step 2: Email processing
+        if self.config.email_enabled:
+            processed_content = self.process_emails_on_text(processed_content, mask_mappings)
+        
+        # Step 3: Phone number processing
+        if self.config.phone_enabled:
+            processed_content = self.process_phone_numbers_on_text(processed_content, mask_mappings)
+        
+        # Mark segment as processed
+        segment["content"] = processed_content
+        segment["processed"] = True
+        return segment
+
+    def process_ai_on_text(self, text: str, mask_mappings: List[Dict[str, Any]]) -> str:
+        """
+        Apply AI-based NER processing only to text segments.
+        """
+        try:
+            # Try to load spaCy model if not already loaded
+            if not self.spacy_checker.nlp and not self.spacy_checker.nlp_models:
+                self.spacy_checker.load_spacy_model("en_core_web_sm")
+            
+            # Use AI processing if available
+            if self.spacy_checker.nlp or self.spacy_checker.nlp_models:
+                replacement_map = self.spacy_checker.analyze_and_replace_entities(text)
+                
+                if replacement_map:
+                    # Process the AI mappings
+                    for original, replacement in replacement_map.items():
+                        if self.add_to_mask_mappings(mask_mappings, original, replacement, "Spacy"):
+                            if self.config.debugMode:
+                                print(f"AI masking: {original} -> {replacement}")
+                            
+                            # Replace all occurrences
+                            text = text.replace(original, replacement)
+                        else:
+                            if self.config.debugMode:
+                                print(f"Did not add to mask mappings: {original} -> {replacement}")
+                else:
+                    if self.config.debugMode:
+                        print("AI processing failed or returned empty result")
+            else:
+                print("spaCy not available - skipping AI processing")
+                
+        except Exception as e:
+            print(f"AI processing exception: {e}")
+        
+        return text
+
+    def process_emails_on_text(self, text: str, mask_mappings: List[Dict[str, Any]]) -> str:
+        """
+        Apply email masking only to text segments.
+        """
+        email_mask_type = self.config.email_mask_type  # 0 = NONE
+        if email_mask_type != 0 and self.email_checker.contains_email(text):
+            
+            email_matches = self.email_checker.find_emails(text)
+            if self.config.debugMode:
+                print(f"Email matches found: {email_matches}")
+            
+            for match in email_matches:
+                email_defined_text = self.config.email_defined_text
+                masked_email = self.email_checker.mask_email(match, email_mask_type, email_defined_text)
+                
+                # Replace in text
+                text = text.replace(match, masked_email)
+                
+                # Add to mappings
+                if self.add_to_mask_mappings(mask_mappings, match, masked_email, "EMAIL"):
+                    if self.config.debugMode:
+                        print(f"Email masking: {match} -> {masked_email}")
+        
+        return text
+
+    def process_phone_numbers_on_text(self, text: str, mask_mappings: List[Dict[str, Any]]) -> str:
+        """
+        Apply phone number masking only to text segments.
+        """
+        phone_mask_type = self.config.phone_mask_type  # 0 = NONE
+        if phone_mask_type != 0 and self.phone_checker.contains_phone(text):
+            
+            phone_matches = self.phone_checker.find_phone_numbers(text)
+            for match in phone_matches:
+                phone_defined_text = self.config.phone_defined_text
+                masked_phone = self.phone_checker.mask_phone(match, phone_mask_type, phone_defined_text)
+                
+                # Replace in text
+                text = text.replace(match, masked_phone)
+                
+                # Add to mappings
+                if self.add_to_mask_mappings(mask_mappings, match, masked_phone, "PHONE"):
+                    if self.config.debugMode:
+                        print(f"Phone masking: {match} -> {masked_phone}")
+        
+        return text
+
+    def reconstruct_text(self, segments: List[Dict[str, Any]]) -> str:
+        """
+        Reconstruct the final text from processed segments.
+        Maintains the original structure and spacing.
+        """
+        if not segments:
+            return ""
+        
+        # Sort segments by their original position
+        sorted_segments = sorted(segments, key=lambda x: x["start_pos"])
+        
+        # Reconstruct text with proper spacing
+        reconstructed_parts = []
+        for i, segment in enumerate(sorted_segments):
+            reconstructed_parts.append(segment["content"])
+            
+            # Add spacing between segments (but not after the last one)
+            if i < len(sorted_segments) - 1:
+                # Check if there should be spacing based on original positions
+                current_end = segment["end_pos"]
+                next_start = sorted_segments[i + 1]["start_pos"]
+                
+                if next_start > current_end:
+                    # There was original spacing, preserve it
+                    reconstructed_parts.append("")
+        
+        return "\n\n".join(reconstructed_parts)
+
+    def process_custom_regex(self, processed_text: str, mask_mappings: List[Dict[str, Any]]) -> str:
+        """Process custom regex patterns if enabled - applied globally to final text"""
+        
+        # Check if custom regex is enabled
         if (self.config.custom_regex_enabled):
             
             custom_regex_patterns = self.config.customRegexPatterns
@@ -87,6 +397,9 @@ class TextProcessor:
                                 processed_text = processed_text[:start] + replacement + processed_text[end:]
                                 count += 1
                                 
+                                if self.config.debugMode:
+                                    print(f"Custom regex masking: {original_text} -> {replacement}")
+                                
                     except re.error as e:
                         print(f"Invalid regex pattern: {e}")
                     except Exception as e:
@@ -94,105 +407,105 @@ class TextProcessor:
         
         return processed_text
 
-    def process_code(self, processed_text: str, mask_mappings: List[Dict[str, Any]]) -> bool:
-        """Process code protection if enabled"""
-        # Check if code protection is enabled and text contains code
-        if (self.config.code_protection_enabled and 
-            self.code_checker.contains_code(processed_text)):
-            
-            code_protection_types = getattr(self.config, 'codeProtectionTypes', [])
-            replacement_map = self.code_checker.process_code(processed_text, code_protection_types)
-            
-            for original, replacement in replacement_map.items():
-                if self.add_to_mask_mappings(mask_mappings, original, replacement, "Code"):
-                    # Replace all occurrences
-                    processed_text = processed_text.replace(original, replacement)
+    def get_segment_statistics(self, segments: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Get statistics about the segmented text for debugging and monitoring.
+        """
+        stats = {
+            "total_segments": len(segments),
+            "code_segments": 0,
+            "text_segments": 0,
+            "total_code_length": 0,
+            "total_text_length": 0,
+            "average_confidence": 0.0
+        }
         
-        return processed_text
-
-    def process_emails(self, processed_text: str, mask_mappings: List[Dict[str, Any]]) -> bool:
-        """Process email masking if enabled"""
-        if (self.config.email_enabled):
-            # Check if email masking is enabled and text contains emails
-            email_mask_type = self.config.email_mask_type  # 0 = NONE
-            if email_mask_type != 0 and self.email_checker.contains_email(processed_text):
-                
-                email_matches = self.email_checker.find_emails(processed_text)
-                print(f"email_matches:::: {email_matches}")
-                for match in email_matches:
-                    email_defined_text = self.config.email_defined_text
-                    masked_email = self.email_checker.mask_email(match, email_mask_type, email_defined_text)
-                    
-                    # Replace in text
-                    processed_text = processed_text.replace(match, masked_email)
-                    print(f"masked_email replaced email:::: {masked_email}")
-                    # Add to mappings
-                    if self.add_to_mask_mappings(mask_mappings, match, masked_email, "EMAIL"):
-                        if self.config.debugMode:
-                            print(f"Masked Email: {match} -> {masked_email}")
-        
-        return processed_text
-
-    def process_phone_numbers(self, processed_text: str, mask_mappings: List[Dict[str, Any]]) -> bool:
-        """Process phone number masking if enabled"""
-        
-        if (self.config.phone_enabled):
-            # Check if phone masking is enabled and text contains phones
-            phone_mask_type = self.config.phone_mask_type  # 0 = NONE
-            if phone_mask_type != 0 and self.phone_checker.contains_phone(processed_text):
-                
-                phone_matches = self.phone_checker.find_phone_numbers(processed_text)
-                for match in phone_matches:
-                    phone_defined_text = self.config.phone_defined_text
-                    masked_phone = self.phone_checker.mask_phone(match, phone_mask_type, phone_defined_text)
-                    print(f"masked_phone:::: {masked_phone}")
-                    # Replace in text
-                    processed_text = processed_text.replace(match, masked_phone)
-                    print(f"processed_text replaced phone number:::: {processed_text}")
-                    # Add to mappings
-                    if self.add_to_mask_mappings(mask_mappings, match, masked_phone, "PHONE"):
-                        if self.config.debugMode:
-                            print(f"Masked Phone: {match} -> {masked_phone}")
-        
-        return processed_text
-
-    def process_ai(self, processed_text: str, mask_mappings: List[Dict[str, Any]]) -> bool:
-        """Process AI-based masking if enabled"""
-        
-        # Check if AI processing is enabled and text is long enough
-        if (self.config.ai_enabled):
-            
-            try:
-                # Try to load spaCy model if not already loaded
-                if not self.spacy_checker.nlp and not self.spacy_checker.nlp_models:
-                    self.spacy_checker.load_spacy_model("en_core_web_sm")
-                
-                # Use AI processing if available
-                if self.spacy_checker.nlp or self.spacy_checker.nlp_models:
-                    replacement_map = self.spacy_checker.analyze_and_replace_entities(processed_text)
-                    
-                    if replacement_map:
-                        # Process the AI mappings
-                        for original, replacement in replacement_map.items():
-                            if self.add_to_mask_mappings(mask_mappings, original, replacement, "Spacy"):
-                                if self.config.debugMode:
-                                    print(f"Masked Spacy: {original} -> {replacement}")
-                                
-                                # Replace all occurrences
-                                processed_text = processed_text.replace(original, replacement)
-                            else:
-                                if self.config.debugMode:
-                                    print(f"Did not add to mask mappings: {original} -> {replacement}")
-                    else:
-                        if self.config.debugMode:
-                            print("AI processing failed or returned empty result")
+        if segments:
+            total_confidence = 0.0
+            for segment in segments:
+                if segment["type"] == "CODE":
+                    stats["code_segments"] += 1
+                    stats["total_code_length"] += len(segment["content"])
                 else:
-                    print("spaCy not available - skipping AI processing")
-                    
-            except Exception as e:
-                print(f"AI processing exception: {e}")
+                    stats["text_segments"] += 1
+                    stats["total_text_length"] += len(segment["content"])
+                total_confidence += segment["confidence"]
+            
+            stats["average_confidence"] = total_confidence / len(segments)
         
-        return processed_text
+        return stats
+
+    def heuristic_code_detection(self, text: str) -> str:
+        """
+        Heuristic-based code detection as fallback when model confidence is low.
+        """
+        # Code indicators
+        code_indicators = [
+            r'\b(def|class|function|var|let|const|public|private|protected|static|final|abstract|interface|enum|struct|union)\b',
+            r'\b(if|else|elif|for|while|do|switch|case|break|continue|return|throw|try|catch|finally)\b',
+            r'\b(import|from|export|require|include|using|namespace|package)\b',
+            r'[{}()\[\]]',  # Brackets
+            r'[=+\-*/%<>!&|^~]',  # Operators
+            r'[;:]',  # Semicolons and colons
+            r'^\s*(def|class|function|var|let|const|public|private|protected)',  # Start of line
+            r'print\(|console\.log\(|System\.out\.println\(',  # Print statements
+            r'^\s*[a-zA-Z_]\w*\s*\([^)]*\)\s*[:{=]',  # Function calls/definitions
+        ]
+        
+        # Text indicators
+        text_indicators = [
+            r'\b(the|and|or|but|in|on|at|to|for|of|with|by|from|about|like|as|is|are|was|were|be|been|being)\b',
+            r'[.!?]',  # Sentence endings
+            r'\b[a-z]+\s+[a-z]+\s+[a-z]+',  # Multiple lowercase words
+            r'[A-Z][a-z]+',  # Capitalized words (proper nouns)
+        ]
+        
+        code_score = 0
+        text_score = 0
+        
+        # Count code indicators
+        for pattern in code_indicators:
+            matches = len(re.findall(pattern, text, re.IGNORECASE))
+            code_score += matches
+        
+        # Count text indicators
+        for pattern in text_indicators:
+            matches = len(re.findall(pattern, text, re.IGNORECASE))
+            text_score += matches
+        
+        # Additional heuristics
+        if re.search(r'^\s*[#<>]', text):  # Comments or HTML
+            code_score += 2
+        
+        if len(text.split()) > 20:  # Long text is more likely to be natural language
+            text_score += 3
+        
+        if re.search(r'[A-Z]{3,}', text):  # ALL CAPS words are often code
+            code_score += 1
+        
+        # Decision
+        if code_score > text_score:
+            return "CODE"
+        else:
+            return "TEXT"
+
+    def validate_segment_processing(self, original_text: str, processed_segments: List[Dict[str, Any]]) -> bool:
+        """
+        Validate that all segments have been processed and the reconstruction is valid.
+        """
+        # Check that all segments are processed
+        for segment in processed_segments:
+            if not segment.get("processed", False):
+                print(f"Warning: Segment not processed: {segment['type']}")
+                return False
+        
+        # Check that reconstruction maintains reasonable length
+        reconstructed = self.reconstruct_text(processed_segments)
+        if len(reconstructed) < len(original_text) * 0.5:  # Should not lose more than 50% of content
+            print(f"Warning: Reconstructed text is too short: {len(reconstructed)} vs {len(original_text)}")
+            return False
+        
+        return True
 
     def is_text_masked(self, text: str) -> bool:
         """Check if text is masked by checking database and patterns"""

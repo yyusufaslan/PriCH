@@ -162,7 +162,9 @@ class CodeChecker:
         """Get code blocks from text, code block has start and end index in text"""
         code_blocks = []
         for i, block in enumerate(text.split("\n\n")):
-            if self.code_classifier.predict(block):
+            prediction = self.code_classifier.predict_with_confidence(block)
+            print(f"prediction: {prediction}")
+            if prediction["is_code"]:
                 code_blocks.append({"start": i, "end": i+len(block), "text": block})
         return code_blocks
 
@@ -170,6 +172,9 @@ class CodeChecker:
         """Process code and apply masking based on protection types"""
         code_blocks = self.get_code_blocks(text)
         result_text = text
+        print("🔍 Processing code blocks")
+        print(f"code block len: {len(code_blocks)}")
+        print(f"code_blocks: {code_blocks}")
         
         for block in code_blocks:
             block_text = block["text"]
