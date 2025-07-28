@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 
 class StackOverflowScraper:
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = "rl_cvLEfKSN2gFQpXHouj9a54Txs"
+        self.api_key = api_key
         self.base_url = "https://api.stackexchange.com/2.3"
         self.session = requests.Session()
         self.request_count = 0
