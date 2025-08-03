@@ -3,35 +3,165 @@ from tkinter import ttk, messagebox
 from src.db.clipboard_repository import ClipboardRepository
 
 class SettingsPage:
-    def __init__(self, parent, config_service):
-        self.frame = tk.Frame(parent)
+    def __init__(self, parent, config_service, main_window=None):
+        self.frame = tk.Frame(parent, bg="#1a1a1a")  # Dark background
         self.config_service = config_service
+        self.main_window = main_window  # Store reference to main window
         self.db = ClipboardRepository()
         
-        # Create notebook for tabs
-        self.notebook = ttk.Notebook(self.frame)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Create tabs
-        self.create_general_tab()
-        self.create_masking_tab()
-        self.create_ai_tab()
-        self.create_trusted_programs_tab()
-        self.create_custom_regex_tab()
-        self.create_code_protection_tab()
-        
-        # Create save/cancel buttons
-        self.create_buttons()
+        # Create the main layout
+        self.create_layout()
 
-    def create_general_tab(self):
-        """Create general settings tab"""
-        general_frame = ttk.Frame(self.notebook)
-        self.notebook.add(general_frame, text="General")
+    def create_layout(self):
+        """Create the main layout with header and scrollable content area"""
+        # Create header section
+        self.create_header()
         
-        # Create scrollable frame
-        canvas = tk.Canvas(general_frame)
-        scrollbar = ttk.Scrollbar(general_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
+        # Create main content area with horizontal scrolling
+        self.create_scrollable_content()
+        
+        # Create settings cards
+        self.create_settings_cards()
+
+    def create_header(self):
+        """Create the header section with title and buttons"""
+        # Main header container with gradient effect
+        header_container = tk.Frame(self.frame, bg="#2d2d2d", height=35)
+        header_container.pack(fill=tk.X, padx=0, pady=0)
+        header_container.pack_propagate(False)
+        
+        # Inner header frame with padding
+        header_frame = tk.Frame(header_container, bg="#2d2d2d")
+        header_frame.pack(fill=tk.BOTH, padx=10, pady=5)
+        
+        # Right section - Buttons
+        right_section = tk.Frame(header_frame, bg="#2d2d2d")
+        right_section.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Menu button (left side of right section)
+        menu_btn = self.create_modern_button(right_section, "Menu", 
+                                            command=self.show_menu, 
+                                            bg="#6c757d", fg="white",
+                                            font=("Segoe UI", 10), width=5, height=1)
+        menu_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+    def create_modern_button(self, parent, text, command, bg="#4a90e2", fg="white", 
+                           font=("Segoe UI", 10), width=None, height=None):
+        """Create a modern button with hover effects"""
+        btn = tk.Button(parent, text=text, command=command, bg=bg, fg=fg, 
+                       font=font, relief=tk.FLAT, bd=0, cursor="hand2",
+                       width=width, height=height, padx=5, pady=3)
+        
+        # Hover effects
+        def on_enter(e):
+            btn.config(bg=self.lighten_color(bg, 20))
+        
+        def on_leave(e):
+            btn.config(bg=bg)
+        
+        btn.bind("<Enter>", on_enter)
+        btn.bind("<Leave>", on_leave)
+        
+        return btn
+
+    def lighten_color(self, color, amount):
+        """Lighten a hex color by a given amount"""
+        # Convert hex to RGB
+        color = color.lstrip('#')
+        rgb = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+        
+        # Lighten
+        rgb = tuple(min(255, c + amount) for c in rgb)
+        
+        # Convert back to hex
+        return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
+
+    def create_scrollable_content(self):
+        """Create the horizontally scrollable content area"""
+        # Create canvas for horizontal scrolling
+        canvas_frame = tk.Frame(self.frame, bg="#1a1a1a")
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 5))
+        
+        self.canvas = tk.Canvas(canvas_frame, bg="#1a1a1a", highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        
+        # Create frame for cards inside canvas
+        self.cards_frame = tk.Frame(self.canvas, bg="#1a1a1a")
+        
+        # Configure canvas
+        self.canvas.configure(xscrollcommand=self.scrollbar.set)
+        self.canvas.create_window((0, 0), window=self.cards_frame, anchor="nw")
+        
+        # Bind events for scrolling
+        self.cards_frame.bind("<Configure>", self.on_frame_configure)
+        self.canvas.bind("<Configure>", self.on_canvas_configure)
+        
+        # Bind mouse wheel for horizontal scrolling
+        self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+        self.canvas.bind("<Shift-MouseWheel>", self.on_mousewheel)
+        
+        # Pack canvas and scrollbar
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def on_frame_configure(self, event=None):
+        """Configure the scroll region when the frame size changes"""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def on_canvas_configure(self, event):
+        """Configure the canvas when it's resized"""
+        # Update the width of the cards frame to match canvas width
+        canvas_items = self.canvas.find_withtag("all")
+        if canvas_items:
+            self.canvas.itemconfig(canvas_items[0], width=event.width)
+
+    def on_mousewheel(self, event):
+        """Handle mouse wheel scrolling"""
+        # Scroll horizontally with mouse wheel
+        self.canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def create_settings_cards(self):
+        """Create all settings cards"""
+        self.create_general_card()
+        self.create_masking_card()
+        self.create_ai_card()
+        self.create_trusted_programs_card()
+        self.create_custom_regex_card()
+        self.create_code_protection_card()
+
+    def create_settings_card(self, title, width=350, height=450):
+        """Create a base settings card with modern design"""
+        # Create card container with shadow effect
+        card_container = tk.Frame(self.cards_frame, bg="#2d2d2d", padx=2, pady=0)
+        card_container.pack(side=tk.LEFT, padx=(0, 10), pady=0)
+        
+        # Add a subtle border for better visibility
+        border_frame = tk.Frame(card_container, bg="#4a90e2", padx=1, pady=1)
+        border_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Main card frame with modern design
+        card_frame = tk.Frame(border_frame, bg="#404040", relief=tk.FLAT, bd=0, 
+                             width=width, height=height)
+        card_frame.pack(fill=tk.BOTH, expand=True)
+        card_frame.pack_propagate(False)
+        
+        # Content frame with padding
+        content_frame = tk.Frame(card_frame, bg="#404040")
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Header section with title
+        header_frame = tk.Frame(content_frame, bg="#404040")
+        header_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        title_label = tk.Label(header_frame, text=title, 
+                              font=("Segoe UI", 10, "bold"), 
+                              bg="#404040", fg="white")
+        title_label.pack(anchor="w")
+        
+        # Create scrollable frame for content
+        canvas = tk.Canvas(content_frame, bg="#404040", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#404040")
         
         scrollable_frame.bind(
             "<Configure>",
@@ -41,413 +171,314 @@ class SettingsPage:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        # General Settings
-        general_label = ttk.Label(scrollable_frame, text="General Settings", font=("Arial", 14, "bold"))
-        general_label.pack(pady=(0, 20))
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Hover effects for card
+        def on_card_enter(e):
+            card_frame.config(bg="#505050")
+            content_frame.config(bg="#505050")
+            header_frame.config(bg="#505050")
+            title_label.config(bg="#505050")
+            canvas.config(bg="#505050")
+            scrollable_frame.config(bg="#505050")
+        
+        def on_card_leave(e):
+            card_frame.config(bg="#404040")
+            content_frame.config(bg="#404040")
+            header_frame.config(bg="#404040")
+            title_label.config(bg="#404040")
+            canvas.config(bg="#404040")
+            scrollable_frame.config(bg="#404040")
+        
+        card_frame.bind("<Enter>", on_card_enter)
+        card_frame.bind("<Leave>", on_card_leave)
+        
+        return scrollable_frame
+
+    def create_general_card(self):
+        """Create general settings card"""
+        content_frame = self.create_settings_card("General Settings", 350, 350)
         
         # Disable all features
         self.disable_all_features_var = tk.BooleanVar(value=self.config_service.disable_all_features)
-        disable_all_cb = ttk.Checkbutton(scrollable_frame, text="Disable All Features", 
-                                        variable=self.disable_all_features_var)
+        disable_all_cb = self.create_checkbox(content_frame, "Disable All Features", self.disable_all_features_var)
         disable_all_cb.pack(anchor="w", pady=2)
         
         # Disable masking
         self.disable_masking_var = tk.BooleanVar(value=self.config_service.disable_masking)
-        disable_masking_cb = ttk.Checkbutton(scrollable_frame, text="Disable Masking", 
-                                           variable=self.disable_masking_var)
+        disable_masking_cb = self.create_checkbox(content_frame, "Disable Masking", self.disable_masking_var)
         disable_masking_cb.pack(anchor="w", pady=2)
         
         # Dark mode
         self.dark_mode_var = tk.BooleanVar(value=self.config_service.darkMode)
-        dark_mode_cb = ttk.Checkbutton(scrollable_frame, text="Dark Mode", 
-                                     variable=self.dark_mode_var)
+        dark_mode_cb = self.create_checkbox(content_frame, "Dark Mode", self.dark_mode_var)
         dark_mode_cb.pack(anchor="w", pady=2)
         
         # Show progress bar
         self.show_progress_bar_var = tk.BooleanVar(value=self.config_service.show_progress_bar)
-        progress_cb = ttk.Checkbutton(scrollable_frame, text="Show Progress Bar", 
-                                    variable=self.show_progress_bar_var)
+        progress_cb = self.create_checkbox(content_frame, "Show Progress Bar", self.show_progress_bar_var)
         progress_cb.pack(anchor="w", pady=2)
         
-        # Progress bar times
-        progress_frame = ttk.LabelFrame(scrollable_frame, text="Progress Bar Times (minutes)")
-        progress_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
-        
-        # Inner frame for padding
-        progress_inner_frame = ttk.Frame(progress_frame)
-        progress_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Progress bar times section
+        self.create_section_label(content_frame, "Progress Bar Times (minutes)")
         
         # Short model time
-        ttk.Label(progress_inner_frame, text="Short Model:").grid(row=0, column=0, sticky="w", pady=2)
-        self.short_model_time_var = tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_short_model))
-        short_model_entry = ttk.Entry(progress_inner_frame, textvariable=self.short_model_time_var, width=10)
-        short_model_entry.grid(row=0, column=1, padx=(10, 0), pady=2)
+        self.create_input_field(content_frame, "Short Model:", 
+                               tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_short_model)),
+                               "short_model_time_var")
         
         # Medium model time
-        ttk.Label(progress_inner_frame, text="Medium Model:").grid(row=1, column=0, sticky="w", pady=2)
-        self.medium_model_time_var = tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_medium_model))
-        medium_model_entry = ttk.Entry(progress_inner_frame, textvariable=self.medium_model_time_var, width=10)
-        medium_model_entry.grid(row=1, column=1, padx=(10, 0), pady=2)
+        self.create_input_field(content_frame, "Medium Model:", 
+                               tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_medium_model)),
+                               "medium_model_time_var")
         
         # Long model time
-        ttk.Label(progress_inner_frame, text="Long Model:").grid(row=2, column=0, sticky="w", pady=2)
-        self.long_model_time_var = tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_long_model))
-        long_model_entry = ttk.Entry(progress_inner_frame, textvariable=self.long_model_time_var, width=10)
-        long_model_entry.grid(row=2, column=1, padx=(10, 0), pady=2)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self.create_input_field(content_frame, "Long Model:", 
+                               tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_long_model)),
+                               "long_model_time_var")
 
-    def create_masking_tab(self):
-        """Create masking settings tab"""
-        masking_frame = ttk.Frame(self.notebook)
-        self.notebook.add(masking_frame, text="Masking")
+    def create_masking_card(self):
+        """Create masking settings card"""
+        content_frame = self.create_settings_card("Masking Settings", 350, 350)
         
-        # Create scrollable frame
-        canvas = tk.Canvas(masking_frame)
-        scrollbar = ttk.Scrollbar(masking_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Masking Settings
-        masking_label = ttk.Label(scrollable_frame, text="Masking Settings", font=("Arial", 14, "bold"))
-        masking_label.pack(pady=(0, 20))
-        
-        # Email masking
-        email_frame = ttk.LabelFrame(scrollable_frame, text="Email Masking")
-        email_frame.pack(fill=tk.X, pady=(0, 10), padx=10)
-        
-        # Inner frame for padding
-        email_inner_frame = ttk.Frame(email_frame)
-        email_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Email masking section
+        self.create_section_label(content_frame, "Email Masking")
         
         self.email_enabled_var = tk.BooleanVar(value=self.config_service.email_enabled)
-        email_cb = ttk.Checkbutton(email_inner_frame, text="Enable Email Masking", variable=self.email_enabled_var)
+        email_cb = self.create_checkbox(content_frame, "Enable Email Masking", self.email_enabled_var)
         email_cb.pack(anchor="w", pady=2)
         
-        ttk.Label(email_inner_frame, text="Mask Type:").pack(anchor="w", pady=(10, 0))
-        self.email_mask_type_var = tk.StringVar(value=str(self.config_service.email_mask_type))
-        email_type_combo = ttk.Combobox(email_inner_frame, textvariable=self.email_mask_type_var, 
-                                       values=["0 - None", "1 - Asterisk", "2 - Defined Text", "3 - Partial"],
-                                       state="readonly", width=20)
-        email_type_combo.pack(anchor="w", pady=2)
+        self.create_combobox_field(content_frame, "Mask Type:", 
+                                  tk.StringVar(value=str(self.config_service.email_mask_type)),
+                                  ["0 - None", "1 - Asterisk", "2 - Defined Text", "3 - Partial"],
+                                  "email_mask_type_var")
         
-        ttk.Label(email_inner_frame, text="Defined Text:").pack(anchor="w", pady=(10, 0))
-        self.email_defined_text_var = tk.StringVar(value=self.config_service.email_defined_text)
-        email_text_entry = ttk.Entry(email_inner_frame, textvariable=self.email_defined_text_var, width=30)
-        email_text_entry.pack(anchor="w", pady=2)
+        self.create_input_field(content_frame, "Defined Text:", 
+                               tk.StringVar(value=self.config_service.email_defined_text),
+                               "email_defined_text_var")
         
-        # Phone masking
-        phone_frame = ttk.LabelFrame(scrollable_frame, text="Phone Masking")
-        phone_frame.pack(fill=tk.X, pady=(0, 10), padx=10)
-        
-        # Inner frame for padding
-        phone_inner_frame = ttk.Frame(phone_frame)
-        phone_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Phone masking section
+        self.create_section_label(content_frame, "Phone Masking")
         
         self.phone_enabled_var = tk.BooleanVar(value=self.config_service.phone_enabled)
-        phone_cb = ttk.Checkbutton(phone_inner_frame, text="Enable Phone Masking", variable=self.phone_enabled_var)
+        phone_cb = self.create_checkbox(content_frame, "Enable Phone Masking", self.phone_enabled_var)
         phone_cb.pack(anchor="w", pady=2)
         
-        ttk.Label(phone_inner_frame, text="Mask Type:").pack(anchor="w", pady=(10, 0))
-        self.phone_mask_type_var = tk.StringVar(value=str(self.config_service.phone_mask_type))
-        phone_type_combo = ttk.Combobox(phone_inner_frame, textvariable=self.phone_mask_type_var,
-                                       values=["0 - None", "1 - Asterisk", "2 - Defined Text", "3 - Partial"],
-                                       state="readonly", width=20)
-        phone_type_combo.pack(anchor="w", pady=2)
+        self.create_combobox_field(content_frame, "Mask Type:", 
+                                  tk.StringVar(value=str(self.config_service.phone_mask_type)),
+                                  ["0 - None", "1 - Asterisk", "2 - Defined Text", "3 - Partial"],
+                                  "phone_mask_type_var")
         
-        ttk.Label(phone_inner_frame, text="Defined Text:").pack(anchor="w", pady=(10, 0))
-        self.phone_defined_text_var = tk.StringVar(value=self.config_service.phone_defined_text)
-        phone_text_entry = ttk.Entry(phone_inner_frame, textvariable=self.phone_defined_text_var, width=30)
-        phone_text_entry.pack(anchor="w", pady=2)
+        self.create_input_field(content_frame, "Defined Text:", 
+                               tk.StringVar(value=self.config_service.phone_defined_text),
+                               "phone_defined_text_var")
         
-        # Minimum character lengths
-        length_frame = ttk.LabelFrame(scrollable_frame, text="Minimum Character Lengths")
-        length_frame.pack(fill=tk.X, pady=(0, 10), padx=10)
+        # Minimum character lengths section
+        self.create_section_label(content_frame, "Minimum Character Lengths")
         
-        # Inner frame for padding
-        length_inner_frame = ttk.Frame(length_frame)
-        length_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.create_input_field(content_frame, "AI Processing:", 
+                               tk.StringVar(value=str(self.config_service.min_char_lenght_ai)),
+                               "min_char_ai_var")
         
-        # AI length
-        ttk.Label(length_inner_frame, text="AI Processing:").grid(row=0, column=0, sticky="w", pady=2)
-        self.min_char_ai_var = tk.StringVar(value=str(self.config_service.min_char_lenght_ai))
-        ai_length_entry = ttk.Entry(length_inner_frame, textvariable=self.min_char_ai_var, width=10)
-        ai_length_entry.grid(row=0, column=1, padx=(10, 0), pady=2)
+        self.create_input_field(content_frame, "Code:", 
+                               tk.StringVar(value=str(self.config_service.min_char_lenght_code)),
+                               "min_char_code_var")
+        
+        self.create_input_field(content_frame, "Custom Regex:", 
+                               tk.StringVar(value=str(self.config_service.min_char_lenght_custom_regex)),
+                               "min_char_regex_var")
 
-        # Code length
-        ttk.Label(length_inner_frame, text="Code:").grid(row=3, column=0, sticky="w", pady=2)
-        self.min_char_code_var = tk.StringVar(value=str(self.config_service.min_char_lenght_code))
-        code_length_entry = ttk.Entry(length_inner_frame, textvariable=self.min_char_code_var, width=10)
-        code_length_entry.grid(row=3, column=1, padx=(10, 0), pady=2)
-        
-        # Custom regex length
-        ttk.Label(length_inner_frame, text="Custom Regex:").grid(row=4, column=0, sticky="w", pady=2)
-        self.min_char_regex_var = tk.StringVar(value=str(self.config_service.min_char_lenght_custom_regex))
-        regex_length_entry = ttk.Entry(length_inner_frame, textvariable=self.min_char_regex_var, width=10)
-        regex_length_entry.grid(row=4, column=1, padx=(10, 0), pady=2)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-    def create_ai_tab(self):
-        """Create AI settings tab"""
-        ai_frame = ttk.Frame(self.notebook)
-        self.notebook.add(ai_frame, text="AI Processing")
-        
-        # Create scrollable frame
-        canvas = tk.Canvas(ai_frame)
-        scrollbar = ttk.Scrollbar(ai_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # AI Settings
-        ai_label = ttk.Label(scrollable_frame, text="AI Processing Settings", font=("Arial", 14, "bold"))
-        ai_label.pack(pady=(0, 20))
+    def create_ai_card(self):
+        """Create AI settings card"""
+        content_frame = self.create_settings_card("AI Processing", 350, 350)
         
         # Enable AI
         self.ai_enabled_var = tk.BooleanVar(value=self.config_service.ai_enabled)
-        ai_cb = ttk.Checkbutton(scrollable_frame, text="Enable AI Processing", variable=self.ai_enabled_var)
+        ai_cb = self.create_checkbox(content_frame, "Enable AI Processing", self.ai_enabled_var)
         ai_cb.pack(anchor="w", pady=2)
         
         # Unmask manual
         self.unmask_manual_var = tk.BooleanVar(value=self.config_service.unMaskManual)
-        unmask_cb = ttk.Checkbutton(scrollable_frame, text="Manual Unmasking Only", variable=self.unmask_manual_var)
+        unmask_cb = self.create_checkbox(content_frame, "Manual Unmasking Only", self.unmask_manual_var)
         unmask_cb.pack(anchor="w", pady=2)
         
-        # AI Processing Types
-        ai_types_frame = ttk.LabelFrame(scrollable_frame, text="AI Processing Types")
-        ai_types_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
-        
-        # Inner frame for padding
-        ai_types_inner_frame = ttk.Frame(ai_types_frame)
-        ai_types_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # AI Processing Types section
+        self.create_section_label(content_frame, "AI Processing Types")
         
         # Create treeview for AI types
-        self.ai_tree = ttk.Treeview(ai_types_inner_frame, columns=("Description", "Short", "Enabled"), show="headings", height=8)
-        self.ai_tree.heading("Description", text="Description")
-        self.ai_tree.heading("Short", text="Short Description")
-        self.ai_tree.heading("Enabled", text="Enabled")
-        
-        self.ai_tree.column("Description", width=200)
-        self.ai_tree.column("Short", width=150)
-        self.ai_tree.column("Enabled", width=80)
-        
-        self.ai_tree.pack(fill=tk.X)
+        self.ai_tree = self.create_treeview(content_frame, 
+                                           columns=("Description", "Short", "Enabled"),
+                                           headings=("Description", "Short Description", "Enabled"),
+                                           widths=(200, 150, 80),
+                                           height=8)
         
         # Load AI types
         self.load_ai_types()
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
 
-    def create_trusted_programs_tab(self):
-        """Create trusted programs tab"""
-        trusted_frame = ttk.Frame(self.notebook)
-        self.notebook.add(trusted_frame, text="Trusted Programs")
-        
-        # Create scrollable frame
-        canvas = tk.Canvas(trusted_frame)
-        scrollbar = ttk.Scrollbar(trusted_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Trusted Programs Settings
-        trusted_label = ttk.Label(scrollable_frame, text="Trusted Programs Settings", font=("Arial", 14, "bold"))
-        trusted_label.pack(pady=(0, 20))
+    def create_trusted_programs_card(self):
+        """Create trusted programs card"""
+        content_frame = self.create_settings_card("Trusted Programs", 350, 350)
         
         # Enable trusted programs
         self.trusted_enabled_var = tk.BooleanVar(value=self.config_service.trusted_programs_enabled)
-        trusted_cb = ttk.Checkbutton(scrollable_frame, text="Enable Trusted Programs", variable=self.trusted_enabled_var)
+        trusted_cb = self.create_checkbox(content_frame, "Enable Trusted Programs", self.trusted_enabled_var)
         trusted_cb.pack(anchor="w", pady=2)
         
-        # Trusted Programs List
-        trusted_list_frame = ttk.LabelFrame(scrollable_frame, text="Trusted Programs")
-        trusted_list_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
-        
-        # Inner frame for padding
-        trusted_list_inner_frame = ttk.Frame(trusted_list_frame)
-        trusted_list_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Trusted Programs section
+        self.create_section_label(content_frame, "Trusted Programs")
         
         # Create treeview for trusted programs
-        self.trusted_tree = ttk.Treeview(trusted_list_inner_frame, columns=("Program", "Enabled", "Deleted"), show="headings", height=8)
-        self.trusted_tree.heading("Program", text="Program Name")
-        self.trusted_tree.heading("Enabled", text="Enabled")
-        self.trusted_tree.heading("Deleted", text="Deleted")
-        
-        self.trusted_tree.column("Program", width=300)
-        self.trusted_tree.column("Enabled", width=80)
-        self.trusted_tree.column("Deleted", width=80)
-        
-        self.trusted_tree.pack(fill=tk.X)
+        self.trusted_tree = self.create_treeview(content_frame, 
+                                                columns=("Program", "Enabled", "Deleted"),
+                                                headings=("Program Name", "Enabled", "Deleted"),
+                                                widths=(300, 80, 80),
+                                                height=8)
         
         # Load trusted programs
         self.load_trusted_programs()
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
 
-    def create_custom_regex_tab(self):
-        """Create custom regex tab"""
-        regex_frame = ttk.Frame(self.notebook)
-        self.notebook.add(regex_frame, text="Custom Regex")
-        
-        # Create scrollable frame
-        canvas = tk.Canvas(regex_frame)
-        scrollbar = ttk.Scrollbar(regex_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Custom Regex Settings
-        regex_label = ttk.Label(scrollable_frame, text="Custom Regex Settings", font=("Arial", 14, "bold"))
-        regex_label.pack(pady=(0, 20))
+    def create_custom_regex_card(self):
+        """Create custom regex card"""
+        content_frame = self.create_settings_card("Custom Regex", 350, 350)
         
         # Enable custom regex
         self.regex_enabled_var = tk.BooleanVar(value=self.config_service.custom_regex_enabled)
-        regex_cb = ttk.Checkbutton(scrollable_frame, text="Enable Custom Regex", variable=self.regex_enabled_var)
+        regex_cb = self.create_checkbox(content_frame, "Enable Custom Regex", self.regex_enabled_var)
         regex_cb.pack(anchor="w", pady=2)
         
-        # Priority settings
-        priority_frame = ttk.LabelFrame(scrollable_frame, text="Priority Settings")
-        priority_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
-        
-        # Inner frame for padding
-        priority_inner_frame = ttk.Frame(priority_frame)
-        priority_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Priority settings section
+        self.create_section_label(content_frame, "Priority Settings")
         
         self.regex_priority_ai_var = tk.BooleanVar(value=self.config_service.custom_regex_first_priority_for_ai)
-        priority_ai_cb = ttk.Checkbutton(priority_inner_frame, text="Custom Regex First Priority for AI", 
-                                       variable=self.regex_priority_ai_var)
+        priority_ai_cb = self.create_checkbox(content_frame, "Custom Regex First Priority for AI", self.regex_priority_ai_var)
         priority_ai_cb.pack(anchor="w", pady=2)
         
         self.regex_priority_code_var = tk.BooleanVar(value=self.config_service.custom_regex_first_priority_for_code)
-        priority_code_cb = ttk.Checkbutton(priority_inner_frame, text="Custom Regex First Priority for Code", 
-                                         variable=self.regex_priority_code_var)
+        priority_code_cb = self.create_checkbox(content_frame, "Custom Regex First Priority for Code", self.regex_priority_code_var)
         priority_code_cb.pack(anchor="w", pady=2)
         
-        # Custom Regex Patterns
-        patterns_frame = ttk.LabelFrame(scrollable_frame, text="Custom Regex Patterns")
-        patterns_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
-        
-        # Inner frame for padding
-        patterns_inner_frame = ttk.Frame(patterns_frame)
-        patterns_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Custom Regex Patterns section
+        self.create_section_label(content_frame, "Custom Regex Patterns")
         
         # Create treeview for patterns
-        self.patterns_tree = ttk.Treeview(patterns_inner_frame, columns=("Regex", "Replacement", "Apply For", "Priority", "Enabled"), 
-                                        show="headings", height=6)
-        self.patterns_tree.heading("Regex", text="Regex Pattern")
-        self.patterns_tree.heading("Replacement", text="Replacement")
-        self.patterns_tree.heading("Apply For", text="Apply For")
-        self.patterns_tree.heading("Priority", text="Priority")
-        self.patterns_tree.heading("Enabled", text="Enabled")
-        
-        self.patterns_tree.column("Regex", width=150)
-        self.patterns_tree.column("Replacement", width=100)
-        self.patterns_tree.column("Apply For", width=80)
-        self.patterns_tree.column("Priority", width=80)
-        self.patterns_tree.column("Enabled", width=80)
-        
-        self.patterns_tree.pack(fill=tk.X)
+        self.patterns_tree = self.create_treeview(content_frame, 
+                                                 columns=("Regex", "Replacement", "Apply For", "Priority", "Enabled"),
+                                                 headings=("Regex Pattern", "Replacement", "Apply For", "Priority", "Enabled"),
+                                                 widths=(150, 100, 80, 80, 80),
+                                                 height=6)
         
         # Load patterns
         self.load_custom_regex_patterns()
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
 
-    def create_code_protection_tab(self):
-        """Create code protection tab"""
-        code_frame = ttk.Frame(self.notebook)
-        self.notebook.add(code_frame, text="Code Protection")
-        
-        # Create scrollable frame
-        canvas = tk.Canvas(code_frame)
-        scrollbar = ttk.Scrollbar(code_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Code Protection Settings
-        code_label = ttk.Label(scrollable_frame, text="Code Protection Settings", font=("Arial", 14, "bold"))
-        code_label.pack(pady=(0, 20))
+    def create_code_protection_card(self):
+        """Create code protection card"""
+        content_frame = self.create_settings_card("Code Protection", 350, 350)
         
         # Enable code protection
         self.code_enabled_var = tk.BooleanVar(value=self.config_service.code_protection_enabled)
-        code_cb = ttk.Checkbutton(scrollable_frame, text="Enable Code Protection", variable=self.code_enabled_var)
+        code_cb = self.create_checkbox(content_frame, "Enable Code Protection", self.code_enabled_var)
         code_cb.pack(anchor="w", pady=2)
         
-        # Code Protection Types
-        code_types_frame = ttk.LabelFrame(scrollable_frame, text="Code Protection Types")
-        code_types_frame.pack(fill=tk.X, pady=(10, 0), padx=10)
-        
-        # Inner frame for padding
-        code_types_inner_frame = ttk.Frame(code_types_frame)
-        code_types_inner_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Code Protection Types section
+        self.create_section_label(content_frame, "Code Protection Types")
         
         # Create treeview for code types
-        self.code_tree = ttk.Treeview(code_types_inner_frame, columns=("Type", "Enabled"), show="headings", height=6)
-        self.code_tree.heading("Type", text="Protection Type")
-        self.code_tree.heading("Enabled", text="Enabled")
-        
-        self.code_tree.column("Type", width=200)
-        self.code_tree.column("Enabled", width=80)
-        
-        self.code_tree.pack(fill=tk.X)
+        self.code_tree = self.create_treeview(content_frame, 
+                                             columns=("Type", "Enabled"),
+                                             headings=("Protection Type", "Enabled"),
+                                             widths=(200, 80),
+                                             height=6)
         
         # Load code types
         self.load_code_protection_types()
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
 
-    def create_buttons(self):
-        """Create save and cancel buttons"""
-        button_frame = ttk.Frame(self.frame)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
+    def create_checkbox(self, parent, text, variable):
+        """Create a modern checkbox"""
+        cb = tk.Checkbutton(parent, text=text, variable=variable, 
+                           font=("Segoe UI", 10), bg="#404040", fg="white", 
+                           selectcolor="#404040", activebackground="#404040", 
+                           activeforeground="white", relief=tk.FLAT, bd=0)
+        return cb
+
+    def create_section_label(self, parent, text):
+        """Create a section label"""
+        label = tk.Label(parent, text=text, 
+                        font=("Segoe UI", 11, "bold"), 
+                        bg="#404040", fg="#4a90e2")
+        label.pack(anchor="w", pady=(15, 5))
+
+    def create_input_field(self, parent, label_text, variable, var_reference):
+        """Create an input field with label"""
+        frame = tk.Frame(parent, bg="#404040")
+        frame.pack(fill=tk.X, pady=2)
         
-        save_btn = ttk.Button(button_frame, text="Save Settings", command=self.save_settings)
-        save_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        label = tk.Label(frame, text=label_text, 
+                        font=("Segoe UI", 10), 
+                        bg="#404040", fg="white")
+        label.pack(side=tk.LEFT)
         
-        cancel_btn = ttk.Button(button_frame, text="Cancel", command=self.cancel_settings)
-        cancel_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        entry = tk.Entry(frame, textvariable=variable, 
+                        font=("Segoe UI", 10), width=15,
+                        bg="#505050", fg="white", insertbackground="white",
+                        relief=tk.FLAT, bd=0)
+        entry.pack(side=tk.RIGHT)
         
-        refresh_btn = ttk.Button(button_frame, text="Refresh from Database", command=self.refresh_from_database)
-        refresh_btn.pack(side=tk.LEFT)
+        # Store reference to variable
+        setattr(self, var_reference, variable)
+        
+        return frame
+
+    def create_combobox_field(self, parent, label_text, variable, values, var_reference):
+        """Create a combobox field with label"""
+        frame = tk.Frame(parent, bg="#404040")
+        frame.pack(fill=tk.X, pady=2)
+        
+        label = tk.Label(frame, text=label_text, 
+                        font=("Segoe UI", 10), 
+                        bg="#404040", fg="white")
+        label.pack(side=tk.LEFT)
+        
+        combo = ttk.Combobox(frame, textvariable=variable, 
+                            values=values, state="readonly", width=20,
+                            font=("Segoe UI", 10))
+        combo.pack(side=tk.RIGHT)
+        
+        # Store reference to variable
+        setattr(self, var_reference, variable)
+        
+        return frame
+
+    def create_treeview(self, parent, columns, headings, widths, height):
+        """Create a modern treeview"""
+        # Create frame for treeview
+        tree_frame = tk.Frame(parent, bg="#404040")
+        tree_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Create treeview
+        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=height)
+        
+        # Configure headings and columns
+        for col, heading, width in zip(columns, headings, widths):
+            tree.heading(col, text=heading)
+            tree.column(col, width=width)
+        
+        # Style the treeview
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Treeview", 
+                       background="#505050", 
+                       foreground="white", 
+                       fieldbackground="#505050",
+                       font=("Segoe UI", 9))
+        style.configure("Treeview.Heading", 
+                       background="#404040", 
+                       foreground="white",
+                       font=("Segoe UI", 9, "bold"))
+        
+        tree.pack(fill=tk.BOTH, expand=True)
+        
+        return tree
 
     def load_ai_types(self):
         """Load AI processing types into treeview"""
@@ -552,16 +583,42 @@ class SettingsPage:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
 
-    def cancel_settings(self):
-        """Cancel settings changes"""
-        # Reload from database to discard changes
-        self.config_service.load_config_from_database()
-        messagebox.showinfo("Info", "Settings reverted to last saved state")
+    def show_menu(self):
+        """Show context menu"""
+        menu = tk.Menu(self.frame, tearoff=0, bg="#2d2d2d", fg="white",
+                      activebackground="#4a90e2", activeforeground="white",
+                      font=("Segoe UI", 10))
+        menu.add_command(label="History", command=self.open_history)
+        menu.add_separator()
+        menu.add_command(label="Save Settings", command=self.save_settings)
+        menu.add_separator()
+        menu.add_command(label="Exit", command=self.close_application)
+        
+        # Show menu at cursor position
+        try:
+            menu.tk_popup(self.frame.winfo_pointerx(), self.frame.winfo_pointery())
+        finally:
+            menu.grab_release()
 
-    def refresh_from_database(self):
-        """Refresh settings from database"""
-        self.config_service.load_config_from_database()
-        messagebox.showinfo("Info", "Settings refreshed from database")
+    def open_history(self):
+        """Open history page"""
+        try:
+            if self.main_window:
+                self.main_window.show_history_page()
+            else:
+                print("Warning: Main window reference not available")
+                messagebox.showwarning("History", "Unable to open history page. Please try again.")
+        except Exception as e:
+            print(f"Error opening history: {e}")
+            messagebox.showerror("Error", f"Failed to open history page: {str(e)}")
+
+    def close_application(self):
+        """Close the application"""
+        try:
+            root = self.frame.winfo_toplevel()
+            root.quit()
+        except Exception as e:
+            print(f"Error closing application: {e}")
 
     def show(self):
         """Show the settings page"""

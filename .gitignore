@@ -19,4 +19,7 @@ venv/
 
 # OS files
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+#model
+/src/services/code_classifier/model_data_fetch/model/

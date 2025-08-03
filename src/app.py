@@ -4,12 +4,16 @@ from src.ui.main_window import MainWindow
 from src.db.initialize import initialize_database
 from src.services.clipboard_service import ClipboardService
 from src.services.config_service import ConfigService
+import screeninfo
 
 class PriCHApp:
     def __init__(self):
         # Initialize database on first run
         initialize_database()
-
+        self.screen = screeninfo.get_monitors()[0]
+        self.width = self.screen.width
+        self.height = self.screen.height
+        self.window_height = self.height // 3
         # Create config and load from database
         self.config = ConfigService()
         self.config.load_config_from_database() # Load config from database
@@ -18,7 +22,7 @@ class PriCHApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title('PriCH - Clipboard Manager')
-        self.root.geometry("1000x600")
+        self.root.geometry(f"{self.width}x{self.window_height}+0+{self.height - self.window_height}")
         
         # Create history service
         self.clipboard_service = ClipboardService(self.config, None)
@@ -37,4 +41,7 @@ class PriCHApp:
             self.root.mainloop()
         finally:
             # Cleanup
-            self.clipboard_service.stop_monitor() 
+            if hasattr(self, 'main_window'):
+                self.main_window.cleanup()
+            if hasattr(self, 'clipboard_service'):
+                self.clipboard_service.stop_monitor() 

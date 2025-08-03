@@ -3,7 +3,7 @@ import torch
 import os
 
 class CodeClassifier:
-    def __init__(self, model_path="model/saved_model"):
+    def __init__(self, model_path="model_data_fetch/model/saved_model"):
         # Convert to absolute path to avoid path interpretation issues
         if not os.path.isabs(model_path):
             model_path = os.path.abspath(model_path)
@@ -53,12 +53,14 @@ class CodeClassifier:
 if __name__ == "__main__":
     classifier = CodeClassifier()
     test_texts = [
-        "private String shareWithPastie(String selection, int languageDropdownId) throws Exception {",
-        "String response = shareAndGetResponse(selection, languageDropdownId);",
-        "return extractKeyFrom(response);",
-        "}",
-        "def hello_world(): print('Hello, World!')",
-        "What&#39;s the difference between I am trying to understand the difference between these four methods.",
+        "dummy@example.com",
+        "He met with Yusuf Aslan from Acrolinx tomorrow. yyusuf@gmail.com",
+        "He met with Yusuf Aslan from Acrolinx tomorrow. yyusuf@gmail.com",
+        "private String shareWithPastie(String selection, int languageDropdownId)",
+        "throws Exception { String response = shareAndGetResponse(selection, languageDropdownId); return extractKeyFrom(response); }",
+        "He met with Yusuf Aslan from Acrolinx tomorrow. yyusuf@gmail.com",
+        "He met with Yusuf Aslan from Acrolinx tomorrow. yyusuf@gmail.com",
+        "He met with Yusuf Aslan from Acrolinx tomorrow. yyusuf@gmail.com",
     ]
 
     print("Testing CODE vs TEXT Classification:")

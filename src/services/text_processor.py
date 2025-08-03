@@ -215,7 +215,7 @@ class TextProcessor:
                 language = self.code_checker.detect_language(content)
                 
                 # Process code using the code checker
-                replacement_map = self.code_checker.process_code_blocks(content, code_protection_types, language)
+                replacement_map = self.code_checker.process_code(content, code_protection_types)
                 
                 # Apply replacements and track mappings
                 for original, replacement in replacement_map.items():

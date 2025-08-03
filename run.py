@@ -14,7 +14,7 @@ from app import PriCHApp
 
 def main():
     app = PriCHApp()
-    app.run()
+    app.run()   
 
 if __name__ == '__main__':
     main() 
