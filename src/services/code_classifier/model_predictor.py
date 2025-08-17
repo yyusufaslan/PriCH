@@ -3,7 +3,7 @@ import torch
 import os
 
 class CodeClassifier:
-    def __init__(self, model_path="model_data_fetch/model/saved_model"):
+    def __init__(self, model_path="./src/services/code_classifier/model_data_fetch/model/saved_model"):
         # Convert to absolute path to avoid path interpretation issues
         if not os.path.isabs(model_path):
             model_path = os.path.abspath(model_path)

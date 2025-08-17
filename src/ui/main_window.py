@@ -1,4 +1,5 @@
 import tkinter as tk
+import customtkinter as ctk
 from src.ui.history_page import HistoryPage
 from src.ui.settings_page import SettingsPage
 from src.utils.hotkey_manager import HotkeyManager
@@ -22,6 +23,11 @@ class MainWindow:
         self.gui = SimpleGUI(root)
         self.clipboard_service = clipboard_service
         self.is_window_hidden = False  # Track window state
+        
+        # Configure customtkinter appearance
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+        
         # Get screen dimensions
         self.width = root.winfo_screenwidth()
         self.height = root.winfo_screenheight()
@@ -38,12 +44,9 @@ class MainWindow:
         self.root.bind("<FocusOut>", self.on_focus_out)
         self.root.bind("<FocusIn>", self.on_focus_in)
         
-        # Make window borderless for a modern look
-        #self.root.overrideredirect(True)
-        
         # Create main container - entire window for pages
-        self.main_container = tk.Frame(root)
-        self.main_container.pack(fill=tk.BOTH, expand=True)
+        self.main_container = ctk.CTkFrame(root, fg_color="#1a1a1a")
+        self.main_container.pack(fill="both", expand=True)
 
         # Initialize both pages
         self.history_page = HistoryPage(self.main_container, clipboard_service, self)
@@ -52,15 +55,11 @@ class MainWindow:
         # Initialize hotkey manager
         self.hotkey_manager = HotkeyManager(self)
         
-        # Create menu
-        #self.create_menu()
-        
         # Show history page by default
         self.show_history_page()
         
         # Start hotkey listener
         self.hotkey_manager.start()
-
 
     # Geliştirilmiş on_focus_out metodu
     def on_focus_out(self, event):
@@ -118,23 +117,6 @@ class MainWindow:
                 self.is_window_hidden = True
         except Exception as e:
             print(f"Error hiding window: {e}")
-
-    def create_menu(self):
-        """Create the main menu"""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
-        
-        # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Settings", command=self.show_settings_page)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.root.quit)
-        
-        # Help menu
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
 
     def show_history_page(self):
         """Show the history page"""

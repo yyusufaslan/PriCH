@@ -1,13 +1,18 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
+import customtkinter as ctk
 from src.db.clipboard_repository import ClipboardRepository
 
 class SettingsPage:
     def __init__(self, parent, config_service, main_window=None):
-        self.frame = tk.Frame(parent, bg="#1a1a1a")  # Dark background
+        self.frame = ctk.CTkFrame(parent, fg_color="#1a1a1a")
         self.config_service = config_service
-        self.main_window = main_window  # Store reference to main window
+        self.main_window = main_window
         self.db = ClipboardRepository()
+        
+        # Configure customtkinter appearance
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
         
         # Create the main layout
         self.create_layout()
@@ -25,100 +30,42 @@ class SettingsPage:
 
     def create_header(self):
         """Create the header section with title and buttons"""
-        # Main header container with gradient effect
-        header_container = tk.Frame(self.frame, bg="#2d2d2d", height=35)
-        header_container.pack(fill=tk.X, padx=0, pady=0)
+        # Main header container
+        header_container = ctk.CTkFrame(self.frame, fg_color="#2d2d2d", height=35)
+        header_container.pack(fill="x", padx=0, pady=0)
         header_container.pack_propagate(False)
         
         # Inner header frame with padding
-        header_frame = tk.Frame(header_container, bg="#2d2d2d")
-        header_frame.pack(fill=tk.BOTH, padx=10, pady=5)
+        header_frame = ctk.CTkFrame(header_container, fg_color="#2d2d2d")
+        header_frame.pack(fill="both", padx=10, pady=5)
         
         # Right section - Buttons
-        right_section = tk.Frame(header_frame, bg="#2d2d2d")
-        right_section.pack(side=tk.RIGHT, fill=tk.Y)
+        right_section = ctk.CTkFrame(header_frame, fg_color="#2d2d2d")
+        right_section.pack(side="right", fill="y")
         
-        # Menu button (left side of right section)
-        menu_btn = self.create_modern_button(right_section, "Menu", 
-                                            command=self.show_menu, 
-                                            bg="#6c757d", fg="white",
-                                            font=("Segoe UI", 10), width=5, height=1)
-        menu_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-    def create_modern_button(self, parent, text, command, bg="#4a90e2", fg="white", 
-                           font=("Segoe UI", 10), width=None, height=None):
-        """Create a modern button with hover effects"""
-        btn = tk.Button(parent, text=text, command=command, bg=bg, fg=fg, 
-                       font=font, relief=tk.FLAT, bd=0, cursor="hand2",
-                       width=width, height=height, padx=5, pady=3)
-        
-        # Hover effects
-        def on_enter(e):
-            btn.config(bg=self.lighten_color(bg, 20))
-        
-        def on_leave(e):
-            btn.config(bg=bg)
-        
-        btn.bind("<Enter>", on_enter)
-        btn.bind("<Leave>", on_leave)
-        
-        return btn
-
-    def lighten_color(self, color, amount):
-        """Lighten a hex color by a given amount"""
-        # Convert hex to RGB
-        color = color.lstrip('#')
-        rgb = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
-        
-        # Lighten
-        rgb = tuple(min(255, c + amount) for c in rgb)
-        
-        # Convert back to hex
-        return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
+        # Menu button
+        menu_btn = ctk.CTkButton(
+            right_section, 
+            text="Menu", 
+            command=self.show_menu,
+            fg_color="#6c757d",
+            hover_color="#5a6268",
+            text_color="white",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            width=60,
+            height=25
+        )
+        menu_btn.pack(side="left", padx=(0, 10))
 
     def create_scrollable_content(self):
         """Create the horizontally scrollable content area"""
-        # Create canvas for horizontal scrolling
-        canvas_frame = tk.Frame(self.frame, bg="#1a1a1a")
-        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 5))
-        
-        self.canvas = tk.Canvas(canvas_frame, bg="#1a1a1a", highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
-        
-        # Create frame for cards inside canvas
-        self.cards_frame = tk.Frame(self.canvas, bg="#1a1a1a")
-        
-        # Configure canvas
-        self.canvas.configure(xscrollcommand=self.scrollbar.set)
-        self.canvas.create_window((0, 0), window=self.cards_frame, anchor="nw")
-        
-        # Bind events for scrolling
-        self.cards_frame.bind("<Configure>", self.on_frame_configure)
-        self.canvas.bind("<Configure>", self.on_canvas_configure)
-        
-        # Bind mouse wheel for horizontal scrolling
-        self.canvas.bind("<MouseWheel>", self.on_mousewheel)
-        self.canvas.bind("<Shift-MouseWheel>", self.on_mousewheel)
-        
-        # Pack canvas and scrollbar
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-
-    def on_frame_configure(self, event=None):
-        """Configure the scroll region when the frame size changes"""
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-
-    def on_canvas_configure(self, event):
-        """Configure the canvas when it's resized"""
-        # Update the width of the cards frame to match canvas width
-        canvas_items = self.canvas.find_withtag("all")
-        if canvas_items:
-            self.canvas.itemconfig(canvas_items[0], width=event.width)
-
-    def on_mousewheel(self, event):
-        """Handle mouse wheel scrolling"""
-        # Scroll horizontally with mouse wheel
-        self.canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+        # Create scrollable frame for cards
+        self.cards_frame = ctk.CTkScrollableFrame(
+            self.frame,
+            fg_color="#1a1a1a",
+            orientation="horizontal"
+        )
+        self.cards_frame.pack(fill="both", expand=True, padx=10, pady=(5, 5))
 
     def create_settings_cards(self):
         """Create all settings cards"""
@@ -129,70 +76,36 @@ class SettingsPage:
         self.create_custom_regex_card()
         self.create_code_protection_card()
 
-    def create_settings_card(self, title, width=350, height=450):
+    def create_settings_card(self, title, width=350, height=350):
         """Create a base settings card with modern design"""
-        # Create card container with shadow effect
-        card_container = tk.Frame(self.cards_frame, bg="#2d2d2d", padx=2, pady=0)
-        card_container.pack(side=tk.LEFT, padx=(0, 10), pady=0)
-        
-        # Add a subtle border for better visibility
-        border_frame = tk.Frame(card_container, bg="#4a90e2", padx=1, pady=1)
-        border_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Main card frame with modern design
-        card_frame = tk.Frame(border_frame, bg="#404040", relief=tk.FLAT, bd=0, 
-                             width=width, height=height)
-        card_frame.pack(fill=tk.BOTH, expand=True)
-        card_frame.pack_propagate(False)
+        # Create card container
+        card_container = ctk.CTkFrame(self.cards_frame, fg_color="#2d2d2d", width=width, height=height)
+        card_container.pack(side="left", padx=(0, 10), pady=0)
+        card_container.pack_propagate(False)
         
         # Content frame with padding
-        content_frame = tk.Frame(card_frame, bg="#404040")
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        content_frame = ctk.CTkFrame(card_container, fg_color="#404040")
+        content_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Header section with title
-        header_frame = tk.Frame(content_frame, bg="#404040")
-        header_frame.pack(fill=tk.X, pady=(0, 5))
+        header_frame = ctk.CTkFrame(content_frame, fg_color="#404040")
+        header_frame.pack(fill="x", pady=(0, 5))
         
-        title_label = tk.Label(header_frame, text=title, 
-                              font=("Segoe UI", 10, "bold"), 
-                              bg="#404040", fg="white")
+        title_label = ctk.CTkLabel(
+            header_frame, 
+            text=title,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            fg_color="#404040",
+            text_color="white"
+        )
         title_label.pack(anchor="w")
         
         # Create scrollable frame for content
-        canvas = tk.Canvas(content_frame, bg="#404040", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg="#404040")
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        scrollable_frame = ctk.CTkScrollableFrame(
+            content_frame,
+            fg_color="#404040"
         )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Hover effects for card
-        def on_card_enter(e):
-            card_frame.config(bg="#505050")
-            content_frame.config(bg="#505050")
-            header_frame.config(bg="#505050")
-            title_label.config(bg="#505050")
-            canvas.config(bg="#505050")
-            scrollable_frame.config(bg="#505050")
-        
-        def on_card_leave(e):
-            card_frame.config(bg="#404040")
-            content_frame.config(bg="#404040")
-            header_frame.config(bg="#404040")
-            title_label.config(bg="#404040")
-            canvas.config(bg="#404040")
-            scrollable_frame.config(bg="#404040")
-        
-        card_frame.bind("<Enter>", on_card_enter)
-        card_frame.bind("<Leave>", on_card_leave)
+        scrollable_frame.pack(fill="both", expand=True)
         
         return scrollable_frame
 
@@ -395,34 +308,53 @@ class SettingsPage:
 
     def create_checkbox(self, parent, text, variable):
         """Create a modern checkbox"""
-        cb = tk.Checkbutton(parent, text=text, variable=variable, 
-                           font=("Segoe UI", 10), bg="#404040", fg="white", 
-                           selectcolor="#404040", activebackground="#404040", 
-                           activeforeground="white", relief=tk.FLAT, bd=0)
+        cb = ctk.CTkCheckBox(
+            parent, 
+            text=text, 
+            variable=variable,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#4a90e2",
+            hover_color="#357abd",
+            text_color="white"
+        )
         return cb
 
     def create_section_label(self, parent, text):
         """Create a section label"""
-        label = tk.Label(parent, text=text, 
-                        font=("Segoe UI", 11, "bold"), 
-                        bg="#404040", fg="#4a90e2")
+        label = ctk.CTkLabel(
+            parent, 
+            text=text,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            fg_color="#404040",
+            text_color="#4a90e2"
+        )
         label.pack(anchor="w", pady=(15, 5))
 
     def create_input_field(self, parent, label_text, variable, var_reference):
         """Create an input field with label"""
-        frame = tk.Frame(parent, bg="#404040")
-        frame.pack(fill=tk.X, pady=2)
+        frame = ctk.CTkFrame(parent, fg_color="#404040")
+        frame.pack(fill="x", pady=2)
         
-        label = tk.Label(frame, text=label_text, 
-                        font=("Segoe UI", 10), 
-                        bg="#404040", fg="white")
-        label.pack(side=tk.LEFT)
+        label = ctk.CTkLabel(
+            frame, 
+            text=label_text,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#404040",
+            text_color="white"
+        )
+        label.pack(side="left")
         
-        entry = tk.Entry(frame, textvariable=variable, 
-                        font=("Segoe UI", 10), width=15,
-                        bg="#505050", fg="white", insertbackground="white",
-                        relief=tk.FLAT, bd=0)
-        entry.pack(side=tk.RIGHT)
+        entry = ctk.CTkEntry(
+            frame, 
+            textvariable=variable,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            width=150,
+            height=25,
+            fg_color="#505050",
+            text_color="white",
+            border_color="#505050"
+        )
+        entry.pack(side="right")
         
         # Store reference to variable
         setattr(self, var_reference, variable)
@@ -431,18 +363,31 @@ class SettingsPage:
 
     def create_combobox_field(self, parent, label_text, variable, values, var_reference):
         """Create a combobox field with label"""
-        frame = tk.Frame(parent, bg="#404040")
-        frame.pack(fill=tk.X, pady=2)
+        frame = ctk.CTkFrame(parent, fg_color="#404040")
+        frame.pack(fill="x", pady=2)
         
-        label = tk.Label(frame, text=label_text, 
-                        font=("Segoe UI", 10), 
-                        bg="#404040", fg="white")
-        label.pack(side=tk.LEFT)
+        label = ctk.CTkLabel(
+            frame, 
+            text=label_text,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#404040",
+            text_color="white"
+        )
+        label.pack(side="left")
         
-        combo = ttk.Combobox(frame, textvariable=variable, 
-                            values=values, state="readonly", width=20,
-                            font=("Segoe UI", 10))
-        combo.pack(side=tk.RIGHT)
+        combo = ctk.CTkOptionMenu(
+            frame, 
+            variable=variable,
+            values=values,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            width=200,
+            height=25,
+            fg_color="#505050",
+            button_color="#4a90e2",
+            button_hover_color="#357abd",
+            text_color="white"
+        )
+        combo.pack(side="right")
         
         # Store reference to variable
         setattr(self, var_reference, variable)
@@ -450,88 +395,81 @@ class SettingsPage:
         return frame
 
     def create_treeview(self, parent, columns, headings, widths, height):
-        """Create a modern treeview"""
+        """Create a modern treeview using CTkFrame and CTkTextbox for display"""
         # Create frame for treeview
-        tree_frame = tk.Frame(parent, bg="#404040")
-        tree_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        tree_frame = ctk.CTkFrame(parent, fg_color="#404040")
+        tree_frame.pack(fill="both", expand=True, pady=5)
         
-        # Create treeview
-        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=height)
+        # Create a text widget to display the data in a table format
+        text_widget = ctk.CTkTextbox(
+            tree_frame,
+            fg_color="#505050",
+            text_color="white",
+            font=ctk.CTkFont(family="Segoe UI", size=9),
+            height=height * 20  # Approximate height based on number of rows
+        )
+        text_widget.pack(fill="both", expand=True)
         
-        # Configure headings and columns
-        for col, heading, width in zip(columns, headings, widths):
-            tree.heading(col, text=heading)
-            tree.column(col, width=width)
+        # Store the text widget for later use
+        text_widget.tree_data = []
         
-        # Style the treeview
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Treeview", 
-                       background="#505050", 
-                       foreground="white", 
-                       fieldbackground="#505050",
-                       font=("Segoe UI", 9))
-        style.configure("Treeview.Heading", 
-                       background="#404040", 
-                       foreground="white",
-                       font=("Segoe UI", 9, "bold"))
-        
-        tree.pack(fill=tk.BOTH, expand=True)
-        
-        return tree
+        return text_widget
 
     def load_ai_types(self):
-        """Load AI processing types into treeview"""
-        for item in self.ai_tree.get_children():
-            self.ai_tree.delete(item)
+        """Load AI processing types into text widget"""
+        self.ai_tree.delete("1.0", "end")
+        
+        # Create header
+        header = f"{'Description':<30} {'Short Description':<20} {'Enabled':<10}\n"
+        self.ai_tree.insert("1.0", header)
+        self.ai_tree.insert("end", "-" * 60 + "\n")
         
         ai_types = self.config_service.aiProcessingTypes
         for ai_type in ai_types:
-            self.ai_tree.insert("", "end", values=(
-                ai_type['description'],  # description
-                ai_type['shortDescription'],  # short_description
-                "Yes" if ai_type['enabled'] else "No"  # enabled
-            ))
+            row = f"{ai_type['description']:<30} {ai_type['shortDescription']:<20} {'Yes' if ai_type['enabled'] else 'No':<10}\n"
+            self.ai_tree.insert("end", row)
 
     def load_trusted_programs(self):
-        """Load trusted programs into treeview"""
-        for item in self.trusted_tree.get_children():
-            self.trusted_tree.delete(item)
+        """Load trusted programs into text widget"""
+        self.trusted_tree.delete("1.0", "end")
+        
+        # Create header
+        header = f"{'Program Name':<30} {'Enabled':<10} {'Deleted':<10}\n"
+        self.trusted_tree.insert("1.0", header)
+        self.trusted_tree.insert("end", "-" * 50 + "\n")
         
         trusted_programs = self.config_service.trustedPrograms
         for program in trusted_programs:
-            self.trusted_tree.insert("", "end", values=(
-                program['programName'],  # program_name
-                "Yes" if program['enabled'] else "No",  # enabled
-                "Yes" if program['deleted'] else "No"   # deleted
-            ))
+            row = f"{program['programName']:<30} {'Yes' if program['enabled'] else 'No':<10} {'Yes' if program['deleted'] else 'No':<10}\n"
+            self.trusted_tree.insert("end", row)
 
     def load_custom_regex_patterns(self):
-        """Load custom regex patterns into treeview"""
-        for item in self.patterns_tree.get_children():
-            self.patterns_tree.delete(item)
+        """Load custom regex patterns into text widget"""
+        self.patterns_tree.delete("1.0", "end")
+        
+        # Create header
+        header = f"{'Regex Pattern':<20} {'Replacement':<15} {'Apply For':<12} {'Priority':<10} {'Enabled':<10}\n"
+        self.patterns_tree.insert("1.0", header)
+        self.patterns_tree.insert("end", "-" * 67 + "\n")
         
         patterns = self.config_service.customRegexPatterns
         for pattern in patterns:
-            self.patterns_tree.insert("", "end", values=(
-                pattern['regex'],  # regex
-                pattern['replacement'],  # replacement
-                pattern['applyFor'],  # apply_for
-                "Yes" if pattern['firstPriority'] else "No",  # first_priority
-                "Yes" if pattern['enabled'] else "No"   # enabled
-            ))
+            row = f"{pattern['regex']:<20} {pattern['replacement']:<15} {pattern['applyFor']:<12} {'Yes' if pattern['firstPriority'] else 'No':<10} {'Yes' if pattern['enabled'] else 'No':<10}\n"
+            self.patterns_tree.insert("end", row)
 
     def load_code_protection_types(self):
-        """Load code protection types into treeview"""
-        for item in self.code_tree.get_children():
-            self.code_tree.delete(item)
+        """Load code protection types into text widget"""
+        self.code_tree.delete("1.0", "end")
+        
+        # Create header
+        header = f"{'Protection Type':<25} {'Enabled':<10}\n"
+        self.code_tree.insert("1.0", header)
+        self.code_tree.insert("end", "-" * 35 + "\n")
         
         code_types = self.config_service.codeProtectionTypes
         for code_type in code_types:
-            self.code_tree.insert("", "end", values=(
-                code_type['typeName'],  # type_name
-                "Yes" if code_type['enabled'] else "No"  # enabled
-            ))
+            row = f"{code_type['typeName']:<25} {'Yes' if code_type['enabled'] else 'No':<10}\n"
+            self.code_tree.insert("end", row)
 
     def save_settings(self):
         """Save all settings to database"""
@@ -584,21 +522,62 @@ class SettingsPage:
             messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
 
     def show_menu(self):
-        """Show context menu"""
-        menu = tk.Menu(self.frame, tearoff=0, bg="#2d2d2d", fg="white",
-                      activebackground="#4a90e2", activeforeground="white",
-                      font=("Segoe UI", 10))
-        menu.add_command(label="History", command=self.open_history)
-        menu.add_separator()
-        menu.add_command(label="Save Settings", command=self.save_settings)
-        menu.add_separator()
-        menu.add_command(label="Exit", command=self.close_application)
+        """Show custom menu using CTkToplevel"""
+        # Create a custom menu using CTkFrame
+        menu_window = ctk.CTkToplevel()
+        menu_window.title("Menu")
+        menu_window.geometry("200x200")
+        menu_window.configure(fg_color="#2d2d2d")
+        menu_window.attributes("-topmost", True)
         
-        # Show menu at cursor position
-        try:
-            menu.tk_popup(self.frame.winfo_pointerx(), self.frame.winfo_pointery())
-        finally:
-            menu.grab_release()
+        # Center the menu window
+        menu_window.update_idletasks()
+        x = (menu_window.winfo_screenwidth() // 2) - (200 // 2)
+        y = (menu_window.winfo_screenheight() // 2) - (200 // 2)
+        menu_window.geometry(f"200x200+{x}+{y}")
+        
+        menu_frame = ctk.CTkFrame(menu_window, fg_color="#2d2d2d")
+        menu_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Menu buttons
+        history_btn = ctk.CTkButton(
+            menu_frame,
+            text="History",
+            command=lambda: [self.open_history(), menu_window.destroy()],
+            fg_color="#4a90e2",
+            hover_color="#357abd",
+            text_color="white",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            width=180,
+            height=35
+        )
+        history_btn.pack(pady=5)
+        
+        save_btn = ctk.CTkButton(
+            menu_frame,
+            text="Save Settings",
+            command=lambda: [self.save_settings(), menu_window.destroy()],
+            fg_color="#28a745",
+            hover_color="#218838",
+            text_color="white",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            width=180,
+            height=35
+        )
+        save_btn.pack(pady=5)
+        
+        exit_btn = ctk.CTkButton(
+            menu_frame,
+            text="Exit",
+            command=lambda: [self.close_application(), menu_window.destroy()],
+            fg_color="#dc3545",
+            hover_color="#c82333",
+            text_color="white",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            width=180,
+            height=35
+        )
+        exit_btn.pack(pady=5)
 
     def open_history(self):
         """Open history page"""
@@ -622,7 +601,7 @@ class SettingsPage:
 
     def show(self):
         """Show the settings page"""
-        self.frame.pack(fill=tk.BOTH, expand=True)
+        self.frame.pack(fill="both", expand=True)
 
     def hide(self):
         """Hide the settings page"""

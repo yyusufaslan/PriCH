@@ -23,7 +23,7 @@ class ClipboardState:
 
 class ClipboardService:
     def __init__(self, config, gui):
-        #self.text_processor = TextProcessor(config)
+        self.text_processor = TextProcessor(config)
         self.db = ClipboardRepository()
         self.state = ClipboardState()
         self.config = config
@@ -67,6 +67,7 @@ class ClipboardService:
                     
                     # Process the clipboard text
                     self.process_clipboard_change(current_clipboard_text, active_process)
+                    self.gui.history_page.refresh_history()
                 else:
                     # Same text, check if we need to switch between original/processed based on app
                     self.process_clipboard_change_same_text(active_process, active_window)
@@ -88,7 +89,7 @@ class ClipboardService:
             # Check if masking is disabled
             if self.config.disable_masking:
                 # Just save to database without processing
-                #self.text_processor.process_text(clipboard_text, state.last_mask_mapping, active_process)
+                self.text_processor.process_text(clipboard_text, state.last_mask_mapping, active_process)
                 state.last_given_text = clipboard_text
                 return
             
@@ -101,19 +102,19 @@ class ClipboardService:
                 
                 if state.last_mask_mapping:
                     match_ratio = match_count / len(state.last_mask_mapping)
-                    #if match_ratio >= 0.7:
+                    if match_ratio >= 0.7:
                         # Unmask the text
-                        #clipboard_text = self.text_processor.replace_values_with_keys(
-                        #    clipboard_text, state.last_original_text, state.last_mask_mapping)
+                        clipboard_text = self.text_processor.replace_values_with_keys(
+                            clipboard_text, state.last_original_text, state.last_mask_mapping)
             
             # Process the text (masking will be implemented later)
-            #processed_text = self.text_processor.process_text(clipboard_text, state.last_mask_mapping, active_process)
+            processed_text = self.text_processor.process_text(clipboard_text, state.last_mask_mapping, active_process)
             
             # Save processed text but keep original text in clipboard for same app
-            #state.last_masked_text = processed_text
-            #state.last_given_text = clipboard_text  # Keep original text in clipboard initially
+            state.last_masked_text = processed_text
+            state.last_given_text = clipboard_text  # Keep original text in clipboard initially
             
-            #print(f"Processed clipboard: {processed_text[:50]}...")
+            print(f"Processed clipboard: {processed_text[:50]}...")
             
         except Exception as e:
             import traceback
