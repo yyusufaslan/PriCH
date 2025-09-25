@@ -98,7 +98,10 @@ class TextProcessor:
         
         if not blocks:
             # If no blocks found, classify the entire text
-            classification = self.code_checker.code_classifier.predict_with_confidence(text)
+            if self.code_checker.model_available and self.code_checker.code_classifier:
+                classification = self.code_checker.code_classifier.predict_with_confidence(text)
+            else:
+                classification = self.code_checker.manual_code_checker.predict_with_confidence(text)
             segment_type = "CODE" if classification["is_code"] else "TEXT"
             
             segment = {
@@ -120,7 +123,10 @@ class TextProcessor:
                 continue
                 
             # Classify the block as code or text
-            classification = self.code_checker.code_classifier.predict_with_confidence(block_text)
+            if self.code_checker.model_available and self.code_checker.code_classifier:
+                classification = self.code_checker.code_classifier.predict_with_confidence(block_text)
+            else:
+                classification = self.code_checker.manual_code_checker.predict_with_confidence(block_text)
             
             # Use model prediction if confidence is high enough, otherwise use heuristics
             if classification["confidence"] > 0.7:

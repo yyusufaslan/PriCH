@@ -1,24 +1,16 @@
 import re
-from src.services.code_classifier.model_predictor import CodeClassifier
-from src.services.checkers.manual_code_checker import ManualCodeChecker
+from typing import Dict, List, Any
 
-class CodeChecker:
+class ManualCodeChecker:
+    """
+    Manual code checker that uses heuristics and pattern matching
+    as a fallback when the trained model fails to load.
+    """
+    
     def __init__(self):
-        self.code_classifier = None
-        self.manual_code_checker = ManualCodeChecker()
-        self.model_available = False
         self._setup_language_patterns()
-        
-        # Try to initialize the model classifier
-        try:
-            self.code_classifier = CodeClassifier()
-            self.model_available = True
-            print("✅ Code classifier model loaded successfully")
-        except Exception as e:
-            print(f"⚠️ Failed to load code classifier model: {e}")
-            print("🔄 Falling back to manual code checker")
-            self.model_available = False
-
+        self._setup_code_indicators()
+    
     def _setup_language_patterns(self):
         """Setup language-specific patterns for accurate code parsing"""
         self.language_patterns = {
@@ -143,9 +135,42 @@ class CodeChecker:
                 ]
             }
         }
-
+    
+    def _setup_code_indicators(self):
+        """Setup patterns that strongly indicate code content"""
+        self.code_indicators = [
+            # Function/method definitions
+            r'\b(def|function|class|interface|struct|enum)\s+\w+',
+            r'\b(public|private|protected|static|final|abstract)\s+\w+',
+            r'\b(int|float|double|char|bool|string|void|var|let|const)\s+\w+',
+            
+            # Control structures
+            r'\b(if|else|elif|for|while|do|switch|case|try|catch|finally)\s*\(',
+            r'\b(return|break|continue|throw|yield|await|async)\b',
+            
+            # Operators and symbols
+            r'[{}();]',  # Braces, parentheses, semicolons
+            r'[=+\-*/%<>!&|^~]',  # Common operators
+            r'[\[\]]',  # Square brackets
+            
+            # Comments
+            r'//.*$',  # Single line comments
+            r'/\*.*?\*/',  # Multi-line comments
+            r'#.*$',  # Hash comments (Python, shell)
+            
+            # Imports and includes
+            r'\b(import|from|include|using|namespace|package)\s+',
+            
+            # String literals with quotes
+            r'["\'`].*["\'`]',
+            
+            # Numbers and variables
+            r'\b\d+\.?\d*\b',  # Numbers
+            r'\b[a-zA-Z_]\w*\s*[=\(]',  # Variable assignments or function calls
+        ]
+    
     def detect_language(self, text: str) -> str:
-        """Detect programming language from code text"""
+        """Detect programming language from code text using heuristics"""
         # Simple language detection based on keywords
         if re.search(r'\bdef\s+\w+\s*\(|import\s+\w+|from\s+\w+', text):
             return 'python'
@@ -165,50 +190,60 @@ class CodeChecker:
             return 'typescript'
         else:
             return 'python'  # Default fallback
-
+    
     def contains_code(self, text: str) -> bool:
-        """Check if text contains code patterns"""
-        if self.model_available and self.code_classifier:
-            return self.code_classifier.predict(text)
-        else:
-            return self.manual_code_checker.contains_code(text)
-
-    def get_code_blocks(self, text: str) -> list:
-        """Get code blocks from text, code block has start and end index in text"""
-        if self.model_available and self.code_classifier:
-            code_blocks = []
-            for i, block in enumerate(text.split("\n\n")):
-                prediction = self.code_classifier.predict_with_confidence(block)
-                print(f"prediction: {prediction}")
-                if prediction["is_code"]:
-                    code_blocks.append({"start": i, "end": i+len(block), "text": block})
-            return code_blocks
-        else:
-            return self.manual_code_checker.get_code_blocks(text)
-
-    def process_code(self, text: str, code_protection_types: list) -> dict:
-        """Process code and apply masking based on protection types"""
-        if self.model_available and self.code_classifier:
-            code_blocks = self.get_code_blocks(text)
-            result_text = text
-            print("🔍 Processing code blocks (Model Mode)")
-            print(f"code block len: {len(code_blocks)}")
-            print(f"code_blocks: {code_blocks}")
-            
-            for block in code_blocks:
-                block_text = block["text"]
-                language = self.detect_language(block_text)
-                replacement_map = self.process_code_blocks(block_text, code_protection_types, language)
+        """Check if text contains code patterns using heuristics"""
+        # Count how many code indicators are present
+        indicator_count = 0
+        total_indicators = len(self.code_indicators)
+        
+        for pattern in self.code_indicators:
+            if re.search(pattern, text, re.MULTILINE | re.DOTALL):
+                indicator_count += 1
+        
+        # If more than 30% of indicators are present, consider it code
+        threshold = 0.3
+        return (indicator_count / total_indicators) >= threshold
+    
+    def get_code_blocks(self, text: str) -> List[Dict[str, Any]]:
+        """Get code blocks from text using heuristics"""
+        code_blocks = []
+        
+        # Split text into potential blocks (by double newlines or significant whitespace)
+        blocks = re.split(r'\n\s*\n', text)
+        
+        for i, block in enumerate(blocks):
+            if self.contains_code(block.strip()):
+                # Calculate approximate start/end positions
+                start_pos = text.find(block)
+                end_pos = start_pos + len(block)
                 
-                # Apply replacements in reverse order to avoid conflicts
-                for original, replacement in sorted(replacement_map.items(), key=lambda x: len(x[0]), reverse=True):
-                    result_text = result_text.replace(original, replacement)
-            
-            return replacement_map
-        else:
-            return self.manual_code_checker.process_code(text, code_protection_types)
-
-    def process_code_blocks(self, text: str, code_protection_types: list, language: str = 'python') -> dict:
+                code_blocks.append({
+                    "start": start_pos,
+                    "end": end_pos,
+                    "text": block.strip()
+                })
+        
+        return code_blocks
+    
+    def process_code(self, text: str, code_protection_types: List[Dict[str, Any]]) -> Dict[str, str]:
+        """Process code and apply masking based on protection types"""
+        code_blocks = self.get_code_blocks(text)
+        replacement_map = {}
+        
+        print("🔍 Processing code blocks (Manual Mode)")
+        print(f"code block len: {len(code_blocks)}")
+        print(f"code_blocks: {code_blocks}")
+        
+        for block in code_blocks:
+            block_text = block["text"]
+            language = self.detect_language(block_text)
+            block_replacements = self.process_code_blocks(block_text, code_protection_types, language)
+            replacement_map.update(block_replacements)
+        
+        return replacement_map
+    
+    def process_code_blocks(self, text: str, code_protection_types: List[Dict[str, Any]], language: str = 'python') -> Dict[str, str]:
         """
         Process code and return replacement map based on protection types
         Returns dict of {original_text: replacement}
@@ -231,8 +266,8 @@ class CodeChecker:
                 replacement_map.update(self._extract_return_types(text, language))
         
         return replacement_map
-
-    def _extract_method_names(self, text: str, language: str) -> dict:
+    
+    def _extract_method_names(self, text: str, language: str) -> Dict[str, str]:
         """Extract method names using language-specific patterns"""
         replacements = {}
         patterns = self.language_patterns.get(language, {}).get('method_names', [])
@@ -251,8 +286,8 @@ class CodeChecker:
                     replacements[method_name] = replacement
         
         return replacements
-
-    def _extract_parameter_names(self, text: str, language: str) -> dict:
+    
+    def _extract_parameter_names(self, text: str, language: str) -> Dict[str, str]:
         """Extract parameter names using language-specific patterns"""
         replacements = {}
         patterns = self.language_patterns.get(language, {}).get('parameter_names', [])
@@ -274,8 +309,8 @@ class CodeChecker:
                                 replacements[param_name] = replacement
         
         return replacements
-
-    def _extract_parameter_types(self, text: str, language: str) -> dict:
+    
+    def _extract_parameter_types(self, text: str, language: str) -> Dict[str, str]:
         """Extract parameter types using language-specific patterns"""
         replacements = {}
         patterns = self.language_patterns.get(language, {}).get('parameter_types', [])
@@ -289,8 +324,8 @@ class CodeChecker:
                     replacements[type_name] = replacement
         
         return replacements
-
-    def _extract_return_types(self, text: str, language: str) -> dict:
+    
+    def _extract_return_types(self, text: str, language: str) -> Dict[str, str]:
         """Extract return types using language-specific patterns"""
         replacements = {}
         patterns = self.language_patterns.get(language, {}).get('return_types', [])
@@ -304,7 +339,7 @@ class CodeChecker:
                     replacements[return_type] = replacement
         
         return replacements
-
+    
     def _is_reserved_keyword(self, word: str, language: str) -> bool:
         """Check if a word is a reserved keyword in the given language"""
         reserved_keywords = {
@@ -326,4 +361,23 @@ class CodeChecker:
             }
         }
         
-        return word.lower() in reserved_keywords.get(language, set()) 
+        return word.lower() in reserved_keywords.get(language, set())
+    
+    def predict_with_confidence(self, text: str) -> Dict[str, Any]:
+        """Predict with confidence scores using heuristics"""
+        is_code = self.contains_code(text)
+        
+        # Calculate a confidence score based on the number of code indicators found
+        indicator_count = 0
+        for pattern in self.code_indicators:
+            if re.search(pattern, text, re.MULTILINE | re.DOTALL):
+                indicator_count += 1
+        
+        # Normalize confidence (0.5 to 1.0 range)
+        confidence = min(0.5 + (indicator_count / len(self.code_indicators)) * 0.5, 1.0)
+        
+        return {
+            "prediction": "CODE" if is_code else "TEXT",
+            "confidence": confidence,
+            "is_code": is_code
+        }

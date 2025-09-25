@@ -1,8 +1,13 @@
 import platform
-
-import win32gui
-import win32process
 import psutil
+
+# Import Windows-specific modules only if available
+try:
+    import win32gui
+    import win32process
+    WIN32_AVAILABLE = True
+except ImportError:
+    WIN32_AVAILABLE = False
 
             
 class PlatformUtils:
@@ -14,6 +19,8 @@ class PlatformUtils:
         return self.os_name
     
     def get_active_process_name_windows(self):
+        if not WIN32_AVAILABLE:
+            return "Windows libraries not available"
         try:
             # Get the handle of the foreground window
             hwnd = win32gui.GetForegroundWindow()
@@ -24,23 +31,19 @@ class PlatformUtils:
             # Get the process name
             process = psutil.Process(pid)
             return process.name()
-        except ImportError:
-            return "Import Error"
         except Exception:
             return "Unknown error"
     
     def get_active_window_title_windows(self):
+        if not WIN32_AVAILABLE:
+            return "Windows libraries not available"
         try:
-            import win32gui
-            
             # Get the handle of the foreground window
             hwnd = win32gui.GetForegroundWindow()
             
             # Get the window title
             title = win32gui.GetWindowText(hwnd)
             return title if title else "Unknown"
-        except ImportError:
-            return "Import error"
         except Exception:
             return "Unknown error"
     
