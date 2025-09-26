@@ -12,7 +12,7 @@ class HotkeyManager:
         
         # Define hotkey combinations for different platforms
         if self.os_name == "darwin":  # macOS
-            self.hotkey_combo = [Key.cmd, Key.space]  # Cmd+Space
+            self.hotkey_combo = [Key.shift, Key.left]  # Cmd+Shift+C
         elif self.os_name == "windows":
             self.hotkey_combo = [Key.ctrl, Key.alt, Key.space]  # Ctrl+Alt+Space
         else:  # Linux

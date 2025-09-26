@@ -3,6 +3,7 @@ from tkinter import messagebox
 import datetime
 import platform
 import customtkinter as ctk
+from src.ui.tooltip import Tooltip
 
 class HistoryPage:
     def __init__(self, parent, clipboard_service, main_window=None):
@@ -26,6 +27,10 @@ class HistoryPage:
         self.start_auto_refresh()
 
     def create_layout(self):
+        # Clear existing layout if it exists
+        for widget in self.frame.winfo_children():
+            widget.destroy()
+        
         self.create_header()
         self.create_scrollable_content()
         
@@ -53,11 +58,14 @@ class HistoryPage:
             height=25
         )
         disable_btn.pack(side="left", padx=(0, 10))
+        Tooltip(disable_btn, "Disable masking/AI features")
         
         search_container = ctk.CTkFrame(header_frame, fg_color="#2d2d2d")
         search_container.pack(side="left", padx=(0, 15))
         
-        self.search_var = tk.StringVar()
+        # Recreate search variable if it doesn't exist
+        if not hasattr(self, 'search_var'):
+            self.search_var = tk.StringVar()
         self.search_var.trace("w", self.on_search_change)
         
         search_entry = ctk.CTkEntry(
@@ -71,7 +79,7 @@ class HistoryPage:
             text_color="white",
             border_color="#404040"
         )
-        search_entry.pack(padx=15, pady=5)
+        search_entry.pack(padx=15, pady=5, side="left")
         
         categories_container = ctk.CTkFrame(header_frame, fg_color="#2d2d2d")
         categories_container.pack(side="left", fill="x", expand=True, padx=(0, 0))
@@ -81,18 +89,19 @@ class HistoryPage:
         right_section = ctk.CTkFrame(header_frame, fg_color="#2d2d2d")
         right_section.pack(side="right", fill="y")
         
-        menu_btn = ctk.CTkButton(
+        self.menu_btn = ctk.CTkButton(
             right_section, 
-            text="Menu", 
+            text="≡", 
             command=self.show_menu,
             fg_color="#6c757d",
             hover_color="#5a6268",
             text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=10),
-            width=60,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            width=25,
             height=25
         )
-        menu_btn.pack(side="right")
+        self.menu_btn.pack(side="right")
+        Tooltip(self.menu_btn, "Menu")
 
     def create_category_tags(self, parent):
         categories = [
@@ -107,6 +116,7 @@ class HistoryPage:
             parent,
             fg_color="#2d2d2d",
             height=40,
+            width=100,
             orientation="horizontal"
         )
         self.category_canvas.pack(side="left", fill="x", expand=True)
@@ -136,6 +146,9 @@ class HistoryPage:
             orientation="horizontal"
         )
         self.cards_frame.pack(fill="both", expand=True)
+        
+        # Refresh history after creating the frame
+        self.refresh_history()
 
     def create_history_card(self, history_item, card_index):
         card_container = ctk.CTkFrame(self.cards_frame, fg_color="#2d2d2d", width=320, height=320)
@@ -209,6 +222,7 @@ class HistoryPage:
             command=lambda: self.unmask_text(history_item)
         )
         unmask_btn.pack(side="left", pady=3, padx=3)
+        Tooltip(unmask_btn, "Copy original text")
         
         close_btn = ctk.CTkButton(
             footer_frame,
@@ -222,6 +236,7 @@ class HistoryPage:
             command=lambda: self.close_card(card_container, history_item)
         )
         close_btn.pack(side="right", pady=3, padx=3)
+        Tooltip(close_btn, "Remove card")
         
         # Bind click events to copy masked text
         card_container.bind("<Button-1>", lambda e, item=history_item: self.copy_to_clipboard(item.get('maskedText', '')))
@@ -247,74 +262,31 @@ class HistoryPage:
         messagebox.showinfo("Features", "Features disabled")
 
     def show_menu(self):
-        # Create a custom menu using CTkFrame
-        menu_window = ctk.CTkToplevel()
-        menu_window.title("Menu")
-        menu_window.geometry("200x250")
-        menu_window.configure(fg_color="#2d2d2d")
-        menu_window.attributes("-topmost", True)
-        
-        # Center the menu window
-        menu_window.update_idletasks()
-        x = (menu_window.winfo_screenwidth() // 2) - (200 // 2)
-        y = (menu_window.winfo_screenheight() // 2) - (250 // 2)
-        menu_window.geometry(f"200x250+{x}+{y}")
-        
-        menu_frame = ctk.CTkFrame(menu_window, fg_color="#2d2d2d")
-        menu_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Menu buttons
-        refresh_btn = ctk.CTkButton(
-            menu_frame,
-            text="Refresh",
-            command=lambda: [self.refresh_history(), menu_window.destroy()],
-            fg_color="#4a90e2",
-            hover_color="#357abd",
-            text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            width=180,
-            height=35
-        )
-        refresh_btn.pack(pady=5)
-        
-        clear_btn = ctk.CTkButton(
-            menu_frame,
-            text="Clear All History",
-            command=lambda: [self.clear_all_history(), menu_window.destroy()],
-            fg_color="#dc3545",
-            hover_color="#c82333",
-            text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            width=180,
-            height=35
-        )
-        clear_btn.pack(pady=5)
-        
-        settings_btn = ctk.CTkButton(
-            menu_frame,
-            text="Settings",
-            command=lambda: [self.open_settings(), menu_window.destroy()],
-            fg_color="#6c757d",
-            hover_color="#5a6268",
-            text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            width=180,
-            height=35
-        )
-        settings_btn.pack(pady=5)
-        
-        exit_btn = ctk.CTkButton(
-            menu_frame,
-            text="Exit",
-            command=lambda: [self.close_application(), menu_window.destroy()],
-            fg_color="#dc3545",
-            hover_color="#c82333",
-            text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            width=180,
-            height=35
-        )
-        exit_btn.pack(pady=5)
+        # Use a native Tk dropdown menu posted under the Menu button
+        try:
+            menu = tk.Menu(self.frame, tearoff=0)
+            menu.add_command(label="Refresh", command=self.refresh_history)
+            menu.add_command(label="Clear All History", command=self.clear_all_history)
+            menu.add_separator()
+            menu.add_command(label="Settings", command=self.open_settings)
+            menu.add_separator()
+            menu.add_command(label="Exit", command=self.close_application)
+
+            # Compute screen coords under the menu button
+            btn = getattr(self, 'menu_btn', None)
+            if btn is None:
+                x = self.frame.winfo_rootx() + 10
+                y = self.frame.winfo_rooty() + 50
+            else:
+                x = btn.winfo_rootx()
+                y = btn.winfo_rooty() + btn.winfo_height()
+
+            menu.tk_popup(x, y)
+        finally:
+            try:
+                menu.grab_release()
+            except Exception:
+                pass
 
     def clear_all_history(self):
         if messagebox.askyesno("Clear History", "Are you sure you want to clear all clipboard history?"):
@@ -406,8 +378,8 @@ class HistoryPage:
 
     def show(self):
         self.frame.pack(fill="both", expand=True)
-        if not self.cards_frame:
-            self.create_layout()
+        # Always recreate layout to ensure proper display
+        self.create_layout()
         if self.auto_refresh_enabled:
             self.start_auto_refresh()
 

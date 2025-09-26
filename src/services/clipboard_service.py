@@ -67,7 +67,13 @@ class ClipboardService:
                     
                     # Process the clipboard text
                     self.process_clipboard_change(current_clipboard_text, active_process)
-                    self.gui.history_page.refresh_history()
+                    # Request UI refresh through central GUI facade
+                    if self.gui is not None:
+                        try:
+                            self.gui.refresh_history()
+                        except Exception as _e:
+                            # Fallback: ignore UI refresh errors in monitor thread
+                            pass
                 else:
                     # Same text, check if we need to switch between original/processed based on app
                     self.process_clipboard_change_same_text(active_process, active_window)

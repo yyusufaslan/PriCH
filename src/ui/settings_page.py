@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
+from src.ui.tooltip import Tooltip
 from src.db.clipboard_repository import ClipboardRepository
 
 class SettingsPage:
@@ -44,7 +45,7 @@ class SettingsPage:
         right_section.pack(side="right", fill="y")
         
         # Menu button
-        menu_btn = ctk.CTkButton(
+        self.menu_btn = ctk.CTkButton(
             right_section, 
             text="Menu", 
             command=self.show_menu,
@@ -55,7 +56,8 @@ class SettingsPage:
             width=60,
             height=25
         )
-        menu_btn.pack(side="left", padx=(0, 10))
+        self.menu_btn.pack(side="left", padx=(0, 10))
+        Tooltip(self.menu_btn, "Menu")
 
     def create_scrollable_content(self):
         """Create the horizontally scrollable content area"""
@@ -522,62 +524,28 @@ class SettingsPage:
             messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
 
     def show_menu(self):
-        """Show custom menu using CTkToplevel"""
-        # Create a custom menu using CTkFrame
-        menu_window = ctk.CTkToplevel()
-        menu_window.title("Menu")
-        menu_window.geometry("200x200")
-        menu_window.configure(fg_color="#2d2d2d")
-        menu_window.attributes("-topmost", True)
-        
-        # Center the menu window
-        menu_window.update_idletasks()
-        x = (menu_window.winfo_screenwidth() // 2) - (200 // 2)
-        y = (menu_window.winfo_screenheight() // 2) - (200 // 2)
-        menu_window.geometry(f"200x200+{x}+{y}")
-        
-        menu_frame = ctk.CTkFrame(menu_window, fg_color="#2d2d2d")
-        menu_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Menu buttons
-        history_btn = ctk.CTkButton(
-            menu_frame,
-            text="History",
-            command=lambda: [self.open_history(), menu_window.destroy()],
-            fg_color="#4a90e2",
-            hover_color="#357abd",
-            text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            width=180,
-            height=35
-        )
-        history_btn.pack(pady=5)
-        
-        save_btn = ctk.CTkButton(
-            menu_frame,
-            text="Save Settings",
-            command=lambda: [self.save_settings(), menu_window.destroy()],
-            fg_color="#28a745",
-            hover_color="#218838",
-            text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            width=180,
-            height=35
-        )
-        save_btn.pack(pady=5)
-        
-        exit_btn = ctk.CTkButton(
-            menu_frame,
-            text="Exit",
-            command=lambda: [self.close_application(), menu_window.destroy()],
-            fg_color="#dc3545",
-            hover_color="#c82333",
-            text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            width=180,
-            height=35
-        )
-        exit_btn.pack(pady=5)
+        """Show a native dropdown menu under the Menu button"""
+        try:
+            menu = tk.Menu(self.frame, tearoff=0)
+            menu.add_command(label="History", command=self.open_history)
+            menu.add_command(label="Save Settings", command=self.save_settings)
+            menu.add_separator()
+            menu.add_command(label="Exit", command=self.close_application)
+
+            btn = getattr(self, 'menu_btn', None)
+            if btn is None:
+                x = self.frame.winfo_rootx() + 10
+                y = self.frame.winfo_rooty() + 35
+            else:
+                x = btn.winfo_rootx()
+                y = btn.winfo_rooty() + btn.winfo_height()
+
+            menu.tk_popup(x, y)
+        finally:
+            try:
+                menu.grab_release()
+            except Exception:
+                pass
 
     def open_history(self):
         """Open history page"""
