@@ -169,6 +169,9 @@ class MainWindow:
                         return
                 except Exception:
                     pass
+            if platform.system() == "Windows":
+                self._visible_frame = (0, 0, self.width, self.height)
+                return
             # Fallback: use full screen
             self._visible_frame = (0, 0, self.width, self.height)
         except Exception:
