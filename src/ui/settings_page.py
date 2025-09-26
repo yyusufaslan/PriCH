@@ -3,6 +3,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 from src.ui.tooltip import Tooltip
 from src.db.clipboard_repository import ClipboardRepository
+from src.utils.scroll_manager import ScrollManager
 
 class SettingsPage:
     def __init__(self, parent, config_service, main_window=None):
@@ -61,11 +62,10 @@ class SettingsPage:
 
     def create_scrollable_content(self):
         """Create the horizontally scrollable content area"""
-        # Create scrollable frame for cards
-        self.cards_frame = ctk.CTkScrollableFrame(
+        # Create scrollable frame for cards using ScrollManager
+        self.cards_frame = ScrollManager.create_scrollable_cards_container(
             self.frame,
-            fg_color="#1a1a1a",
-            orientation="horizontal"
+            fg_color="#1a1a1a"
         )
         self.cards_frame.pack(fill="both", expand=True, padx=10, pady=(5, 5))
 
@@ -108,6 +108,11 @@ class SettingsPage:
             fg_color="#404040"
         )
         scrollable_frame.pack(fill="both", expand=True)
+        
+        # Bind mouse wheel events for horizontal scrolling of settings cards
+        ScrollManager.bind_horizontal_scroll(card_container)
+        ScrollManager.bind_horizontal_scroll(content_frame)
+        ScrollManager.bind_horizontal_scroll(scrollable_frame)
         
         return scrollable_frame
 

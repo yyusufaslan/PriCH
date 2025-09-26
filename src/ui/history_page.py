@@ -4,6 +4,7 @@ import datetime
 import platform
 import customtkinter as ctk
 from src.ui.tooltip import Tooltip
+from src.utils.scroll_manager import ScrollManager
 
 class HistoryPage:
     def __init__(self, parent, clipboard_service, main_window=None):
@@ -111,12 +112,11 @@ class HistoryPage:
             "ffffffffff", "faefd", "sadAASASDAS", "vvxcvsd"
         ]
         
-        # Create a scrollable frame for categories
-        self.category_canvas = MyHorizontalScrollableFrame(
+        # Create a scrollable frame for categories using ScrollManager
+        self.category_canvas = ScrollManager.create_scrollable_categories_container(
             parent,
             height=40,
-            width=100,
-            orientation="horizontal"
+            width=100
         )
         self.category_canvas.pack(side="left", fill="x", expand=True)
         
@@ -134,67 +134,19 @@ class HistoryPage:
             )
             tag_btn.pack(side="left", padx=(0, 3), pady=0)
             # Bind mouse wheel to each category button
-            self._bind_mousewheel(tag_btn)
-        self._bind_mousewheel(self.category_canvas)
+            ScrollManager.bind_horizontal_scroll(tag_btn)
         
-    def _bind_mousewheel(self, widget):
-        """Bind mouse wheel events for category scrolling"""
-        def get_parent_canvas(w):
-            # Find the parent canvas (category_canvas)
-            current = w
-            while current and not hasattr(current, '_parent_canvas'):
-                current = current.master
-            return current._parent_canvas if current and hasattr(current, '_parent_canvas') else None
-        
-        parent_canvas = get_parent_canvas(widget)
-        if not parent_canvas:
-            return
-            
-        system = platform.system()
-        if system == "Windows":
-            widget.bind("<MouseWheel>", lambda e: parent_canvas.xview_scroll(-1 * (e.delta // 120), "units"))
-        elif system == "Darwin":  # macOS
-            widget.bind("<MouseWheel>", lambda e: parent_canvas.xview_scroll(-1 * int(e.delta), "units"))
-        else:  # Linux
-            widget.bind("<Button-4>", lambda e: parent_canvas.xview_scroll(-1, "units"))
-            widget.bind("<Button-5>", lambda e: parent_canvas.xview_scroll(1, "units"))
-
-    def _bind_cards_mousewheel(self, widget):
-        """Bind mouse wheel events specifically for history cards scrolling"""
-        def get_cards_canvas(w):
-            # Find the cards frame canvas
-            current = w
-            while current and not hasattr(current, '_parent_canvas'):
-                current = current.master
-            return current._parent_canvas if current and hasattr(current, '_parent_canvas') else None
-        
-        parent_canvas = get_cards_canvas(widget)
-        if not parent_canvas:
-            return
-            
-        system = platform.system()
-        if system == "Windows":
-            widget.bind("<MouseWheel>", lambda e: parent_canvas.xview_scroll(-1 * (e.delta // 120), "units"))
-        elif system == "Darwin":  # macOS
-            widget.bind("<MouseWheel>", lambda e: parent_canvas.xview_scroll(-1 * int(e.delta), "units"))
-        else:  # Linux
-            widget.bind("<Button-4>", lambda e: parent_canvas.xview_scroll(-1, "units"))
-            widget.bind("<Button-5>", lambda e: parent_canvas.xview_scroll(1, "units"))
 
     def create_scrollable_content(self):
         canvas_frame = ctk.CTkFrame(self.frame, fg_color="#1a1a1a")
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=(10, 5))
+        canvas_frame.pack(fill="both", expand=True, padx=10, pady=(5, 5))
         
-        # Create a scrollable frame for the cards
-        self.cards_frame = ctk.CTkScrollableFrame(
+        # Create a scrollable frame for the cards using ScrollManager
+        self.cards_frame = ScrollManager.create_scrollable_cards_container(
             canvas_frame,
-            fg_color="#1a1a1a",
-            orientation="horizontal"
+            fg_color="#1a1a1a"
         )
         self.cards_frame.pack(fill="both", expand=True)
-        
-        # Bind mouse wheel events for history cards horizontal scrolling
-        self._bind_cards_mousewheel(self.cards_frame)
         
         # Refresh history after creating the frame
         self.refresh_history()
@@ -293,9 +245,9 @@ class HistoryPage:
         text_widget.bind("<Button-1>", lambda e, item=history_item: self.copy_to_clipboard(item.get('maskedText', '')))
         
         # Bind mouse wheel events to each card for horizontal scrolling
-        self._bind_cards_mousewheel(card_container)
-        self._bind_cards_mousewheel(content_frame)
-        self._bind_cards_mousewheel(text_widget)
+        ScrollManager.bind_horizontal_scroll(card_container)
+        ScrollManager.bind_horizontal_scroll(content_frame)
+        ScrollManager.bind_horizontal_scroll(text_widget)
         
         return card_container
 
@@ -371,7 +323,7 @@ class HistoryPage:
     def start_auto_refresh(self):
         if self.auto_refresh_enabled:
             self.refresh_history()
-            self.auto_refresh_id = self.frame.after(15000, self.start_auto_refresh)
+            self.auto_refresh_id = self.frame.after(100, self.start_auto_refresh)
 
     def stop_auto_refresh(self):
         if self.auto_refresh_id:
@@ -441,25 +393,4 @@ class HistoryPage:
         self.frame.pack_forget()
         self.stop_auto_refresh()
         
-class MyHorizontalScrollableFrame(ctk.CTkScrollableFrame):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-
-        # Hide scrollbar completely
-        self._scrollbar.configure(width=0)
-        self._scrollbar.pack_forget()
-
-        # Bind mouse wheel for horizontal scrolling
-        self._bind_mousewheel()
-
-    def _bind_mousewheel(self):
-        system = platform.system()
-        if system == "Windows":
-            self.bind("<MouseWheel>", lambda e: self._parent_canvas.xview_scroll(-1 * (e.delta // 120), "units"))
-        elif system == "Darwin":  # macOS
-            # macOS'ta delta küçük değerler döner
-            self.bind("<MouseWheel>", lambda e: self._parent_canvas.xview_scroll(-1 * int(e.delta), "units"))
-        else:  # Linux
-            self.bind("<Button-4>", lambda e: self._parent_canvas.xview_scroll(-1, "units"))
-            self.bind("<Button-5>", lambda e: self._parent_canvas.xview_scroll(1, "units"))
 
