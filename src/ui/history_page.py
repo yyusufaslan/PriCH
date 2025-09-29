@@ -62,25 +62,47 @@ class HistoryPage:
         Tooltip(disable_btn, "Disable masking/AI features")
         
         search_container = ctk.CTkFrame(header_frame, fg_color="#2d2d2d")
-        search_container.pack(side="left", padx=(0, 0))
+        search_container.pack(side="left", padx=(0, 15))
         
         # Recreate search variable if it doesn't exist
         if not hasattr(self, 'search_var'):
             self.search_var = tk.StringVar()
         self.search_var.trace("w", self.on_search_change)
         
-        search_entry = ctk.CTkEntry(
+        self.search_entry = ctk.CTkEntry(
             search_container,
             textvariable=self.search_var,
             placeholder_text="Search in Original Text",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             width=250,
-            height=20,
+            height=25,
             fg_color="#404040",
             text_color="white",
-            border_color="#404040"
+            border_color="#404040",
+            corner_radius=5,
+            border_width=1
         )
-        search_entry.pack(padx=0, pady=5, side="left")
+        self.search_entry.pack(side="left", padx=(15, 5), pady=5)
+        
+        # Add clear search button
+        clear_btn = ctk.CTkButton(
+            search_container,
+            text="✕",
+            width=25,
+            height=25,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#404040",
+            hover_color="#505050",
+            text_color="white",
+            corner_radius=5,
+            command=self.clear_search
+        )
+        clear_btn.pack(side="left", padx=(0, 15), pady=5)
+        
+        # Add focus handling for better UX
+        self.search_entry.bind("<FocusIn>", self._on_search_focus_in)
+        self.search_entry.bind("<FocusOut>", self._on_search_focus_out)
+        self.search_entry.bind("<Return>", self._on_search_enter)
         
         categories_container = ctk.CTkFrame(header_frame, fg_color="#2d2d2d")
         categories_container.pack(side="left", expand=True, padx=(0, 100), fill="x")
@@ -260,6 +282,24 @@ class HistoryPage:
 
     def on_search_change(self, *args):
         self.refresh_history()
+    
+    def _on_search_focus_in(self, event):
+        """Handle search entry focus in"""
+        self.search_entry.configure(border_color="#0078d4")
+    
+    def _on_search_focus_out(self, event):
+        """Handle search entry focus out"""
+        self.search_entry.configure(border_color="#404040")
+    
+    def _on_search_enter(self, event):
+        """Handle Enter key in search entry"""
+        self.refresh_history()
+        return "break"  # Prevent default behavior
+    
+    def clear_search(self):
+        """Clear the search entry and refresh history"""
+        self.search_var.set("")
+        self.search_entry.focus()
 
     def on_category_click(self, category):
         print(f"Category clicked: {category}")
@@ -349,7 +389,7 @@ class HistoryPage:
             
             history = self.clipboard_service.get_history(limit=50)
             
-            search_term = self.search_var.get().lower()
+            search_term = self.search_var.get().strip().lower()
             if search_term and search_term != "search in original text":
                 filtered_history = []
                 for entry in history:
@@ -358,7 +398,14 @@ class HistoryPage:
                         'maskedText': entry[2] if len(entry) > 2 else '',
                         'sourceProcess': entry[3] if len(entry) > 3 else '',
                     }
-                    if any(search_term in str(value).lower() for value in item_as_dict.values()):
+                    # Search in all text fields
+                    searchable_text = ' '.join([
+                        str(item_as_dict.get('originalText', '')),
+                        str(item_as_dict.get('maskedText', '')),
+                        str(item_as_dict.get('sourceProcess', ''))
+                    ]).lower()
+                    
+                    if search_term in searchable_text:
                         filtered_history.append(entry)
                 history = filtered_history
             
