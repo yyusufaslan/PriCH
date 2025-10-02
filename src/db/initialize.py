@@ -20,7 +20,7 @@ DEFAULT_AI_PROCESSING_TYPES = [
     (13, "Measurements, as of weight or distance", "Quantity", True),
     (14, "first, second, third, etc.", "Ordinal", True),
     (15, "Numerals that do not fall under another type", "Cardinal", True),
-    (16, "Nationality or Religious or Political Group", "Nationality or Religious or Political Group", True),
+    (16, "Nationality, Religious, Political Group", "Nationality, Religious, Political Group", True),
     (17, "Building, Airport, Highway, Bridge, etc.", "Facility", True),
 ]
 

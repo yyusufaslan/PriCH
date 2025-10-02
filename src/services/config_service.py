@@ -177,6 +177,73 @@ class ConfigService:
         except Exception as e:
             print(f"Error updating config: {e}")
 
+    def update_code_protection_type(self, type_name: str, enabled: bool) -> bool:
+        """Update a single code protection type's enabled flag in DB and memory."""
+        try:
+            updated = self.config_repository.update_code_protection_type(type_name, enabled)
+            # Reflect change in memory list if present
+            for code_type in self.codeProtectionTypes:
+                if code_type.get('typeName') == type_name:
+                    code_type['enabled'] = enabled
+                    break
+            return updated
+        except Exception as e:
+            print(f"Error updating code protection type '{type_name}': {e}")
+            return False
+
+    def update_trusted_program(self, program_name: str, enabled: bool = None, deleted: bool = None) -> bool:
+        """Update a trusted program flags in DB and memory."""
+        try:
+            updated = self.config_repository.update_trusted_program(program_name, enabled=enabled, deleted=deleted)
+            if not updated:
+                return False
+            for program in self.trustedPrograms:
+                if program.get('programName') == program_name:
+                    if enabled is not None:
+                        program['enabled'] = enabled
+                    if deleted is not None:
+                        program['deleted'] = deleted
+                    break
+            return True
+        except Exception as e:
+            print(f"Error updating trusted program '{program_name}': {e}")
+            return False
+
+    def update_ai_processing_type(self, ai_mask_option: int, enabled: bool) -> bool:
+        """Update an AI processing type's enabled flag in DB and memory."""
+        try:
+            updated = self.config_repository.update_ai_processing_type(ai_mask_option, enabled=enabled)
+            if not updated:
+                return False
+            # Reflect change in memory list if present
+            for ai_type in self.aiProcessingTypes:
+                if ai_type.get('aiMaskOption') == ai_mask_option:
+                    ai_type['enabled'] = enabled
+                    break
+            return True
+        except Exception as e:
+            print(f"Error updating AI processing type '{ai_mask_option}': {e}")
+            return False
+
+    def update_custom_regex_pattern(self, pattern_id: int, enabled: bool = None, first_priority: bool = None) -> bool:
+        """Update a custom regex pattern's flags in DB and memory."""
+        try:
+            updated = self.config_repository.update_custom_regex_pattern(pattern_id, enabled=enabled, first_priority=first_priority)
+            if not updated:
+                return False
+            # Reflect change in memory list if present
+            for pattern in self.customRegexPatterns:
+                if pattern.get('id') == pattern_id:
+                    if enabled is not None:
+                        pattern['enabled'] = enabled
+                    if first_priority is not None:
+                        pattern['firstPriority'] = first_priority
+                    break
+            return True
+        except Exception as e:
+            print(f"Error updating custom regex pattern '{pattern_id}': {e}")
+            return False
+
     def get_config_from_database(self):
         """Get fresh config from database (for debugging)"""
         try:

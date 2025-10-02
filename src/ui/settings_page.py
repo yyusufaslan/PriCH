@@ -5,6 +5,16 @@ from src.ui.tooltip import Tooltip
 from src.db.clipboard_repository import ClipboardRepository
 from src.utils.scroll_manager import ScrollManager
 
+import tkinter.messagebox as messagebox
+
+# Try to import Balloon, fallback to None if not available
+try:
+    from tkinter.tix import Balloon
+    BALLOON_AVAILABLE = True
+except ImportError:
+    Balloon = None
+    BALLOON_AVAILABLE = False
+
 class SettingsPage:
     def __init__(self, parent, config_service, main_window=None):
         self.frame = ctk.CTkFrame(parent, fg_color="#1a1a1a")
@@ -15,6 +25,16 @@ class SettingsPage:
         # Configure customtkinter appearance
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
+        
+        # Initialize Balloon tooltip if available, otherwise use None
+        if BALLOON_AVAILABLE:
+            try:
+                self.balloon = Balloon(parent)
+            except Exception as e:
+                print(f"Warning: Balloon tooltip not available: {e}")
+                self.balloon = None
+        else:
+            self.balloon = None
         
         # Create the main layout
         self.create_layout()
@@ -48,13 +68,13 @@ class SettingsPage:
         # Menu button
         self.menu_btn = ctk.CTkButton(
             right_section, 
-            text="Menu", 
+            text="≡", 
             command=self.show_menu,
             fg_color="#6c757d",
             hover_color="#5a6268",
             text_color="white",
-            font=ctk.CTkFont(family="Segoe UI", size=10),
-            width=60,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            width=25,
             height=25
         )
         self.menu_btn.pack(side="left", padx=(0, 10))
@@ -169,14 +189,32 @@ class SettingsPage:
         email_cb = self.create_checkbox(content_frame, "Enable Email Masking", self.email_enabled_var)
         email_cb.pack(anchor="w", pady=2)
         
-        self.create_combobox_field(content_frame, "Mask Type:", 
-                                  tk.StringVar(value=str(self.config_service.email_mask_type)),
-                                  ["0 - None", "1 - Asterisk", "2 - Defined Text", "3 - Partial"],
+        # Email mask type mapping
+        self.email_mask_options = ["None", "Asterisk", "Defined Text", "Partial"]
+        self.email_mask_values = [0, 1, 2, 3]
+        current_email_mask = self.config_service.email_mask_type
+        email_display_text = self.email_mask_options[current_email_mask] if current_email_mask < len(self.email_mask_options) else "None"
+        
+        # Email mask type combobox with callback
+        self.email_mask_type_var = tk.StringVar(value=email_display_text)
+        self.email_combobox_frame = self.create_combobox_field(content_frame, "Mask Type:", 
+                                  self.email_mask_type_var,
+                                  self.email_mask_options,
                                   "email_mask_type_var")
         
-        self.create_input_field(content_frame, "Defined Text:", 
-                               tk.StringVar(value=self.config_service.email_defined_text),
+        # Add callback to email combobox
+        email_combobox = self.email_combobox_frame.winfo_children()[-1]  # Get the combobox widget
+        email_combobox.configure(command=self.on_email_mask_type_changed)
+        
+        # Email defined text input (initially hidden)
+        self.email_defined_text_var = tk.StringVar(value=self.config_service.email_defined_text)
+        self.email_defined_text_frame = self.create_input_field(content_frame, "Defined Text:", 
+                               self.email_defined_text_var,
                                "email_defined_text_var")
+        
+        # Initially hide email defined text if not "Defined Text"
+        if email_display_text != "Defined Text":
+            self.email_defined_text_frame.pack_forget()
         
         # Phone masking section
         self.create_section_label(content_frame, "Phone Masking")
@@ -185,14 +223,32 @@ class SettingsPage:
         phone_cb = self.create_checkbox(content_frame, "Enable Phone Masking", self.phone_enabled_var)
         phone_cb.pack(anchor="w", pady=2)
         
-        self.create_combobox_field(content_frame, "Mask Type:", 
-                                  tk.StringVar(value=str(self.config_service.phone_mask_type)),
-                                  ["0 - None", "1 - Asterisk", "2 - Defined Text", "3 - Partial"],
+        # Phone mask type mapping
+        self.phone_mask_options = ["None", "Asterisk", "Defined Text", "Partial"]
+        self.phone_mask_values = [0, 1, 2, 3]
+        current_phone_mask = self.config_service.phone_mask_type
+        phone_display_text = self.phone_mask_options[current_phone_mask] if current_phone_mask < len(self.phone_mask_options) else "None"
+        
+        # Phone mask type combobox with callback
+        self.phone_mask_type_var = tk.StringVar(value=phone_display_text)
+        self.phone_combobox_frame = self.create_combobox_field(content_frame, "Mask Type:", 
+                                  self.phone_mask_type_var,
+                                  self.phone_mask_options,
                                   "phone_mask_type_var")
         
-        self.create_input_field(content_frame, "Defined Text:", 
-                               tk.StringVar(value=self.config_service.phone_defined_text),
+        # Add callback to phone combobox
+        phone_combobox = self.phone_combobox_frame.winfo_children()[-1]  # Get the combobox widget
+        phone_combobox.configure(command=self.on_phone_mask_type_changed)
+        
+        # Phone defined text input (initially hidden)
+        self.phone_defined_text_var = tk.StringVar(value=self.config_service.phone_defined_text)
+        self.phone_defined_text_frame = self.create_input_field(content_frame, "Defined Text:", 
+                               self.phone_defined_text_var,
                                "phone_defined_text_var")
+        
+        # Initially hide phone defined text if not "Defined Text"
+        if phone_display_text != "Defined Text":
+            self.phone_defined_text_frame.pack_forget()
         
         # Minimum character lengths section
         self.create_section_label(content_frame, "Minimum Character Lengths")
@@ -208,6 +264,18 @@ class SettingsPage:
         self.create_input_field(content_frame, "Custom Regex:", 
                                tk.StringVar(value=str(self.config_service.min_char_lenght_custom_regex)),
                                "min_char_regex_var")
+        
+        # Save button for masking settings
+        save_button = ctk.CTkButton(
+            content_frame,
+            text="Save Masking Settings",
+            command=self.save_masking_settings,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="#4a90e2",
+            hover_color="#357abd",
+            height=30
+        )
+        save_button.pack(pady=(15, 5))
 
     def create_ai_card(self):
         """Create AI settings card"""
@@ -226,21 +294,38 @@ class SettingsPage:
         # AI Processing Types section
         self.create_section_label(content_frame, "AI Processing Types")
         
-        # Create treeview for AI types
-        self.ai_tree = self.create_treeview(content_frame, 
-                                           columns=("Description", "Short", "Enabled"),
-                                           headings=("Description", "Short Description", "Enabled"),
-                                           widths=(200, 150, 80),
-                                           height=8)
+        # Container for interactive toggles
+        self.ai_types_container = ctk.CTkFrame(content_frame, fg_color="#404040")
+        self.ai_types_container.pack(fill="both", expand=True, pady=5)
         
-        # Load AI types
+        # Load interactive list
         self.load_ai_types()
 
     def create_trusted_programs_card(self):
         """Create trusted programs card"""
-        content_frame = self.create_settings_card("Trusted Programs", 350, 350)
+        # Create card container manually to have more control
+        card_container = ctk.CTkFrame(self.cards_frame, fg_color="#2d2d2d", width=350, height=350)
+        card_container.pack(side="left", padx=(0, 10), pady=0)
+        card_container.pack_propagate(False)
         
-        # Enable trusted programs
+        # Content frame with padding
+        content_frame = ctk.CTkFrame(card_container, fg_color="#404040")
+        content_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Header section with title
+        header_frame = ctk.CTkFrame(content_frame, fg_color="#404040")
+        header_frame.pack(fill="x", pady=(0, 5))
+        
+        title_label = ctk.CTkLabel(
+            header_frame, 
+            text="Trusted Programs",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            fg_color="#404040",
+            text_color="white"
+        )
+        title_label.pack(anchor="w")
+        
+        # Enable trusted programs (outside scrollable frame)
         self.trusted_enabled_var = tk.BooleanVar(value=self.config_service.trusted_programs_enabled)
         trusted_cb = self.create_checkbox(content_frame, "Enable Trusted Programs", self.trusted_enabled_var)
         trusted_cb.pack(anchor="w", pady=2)
@@ -248,14 +333,70 @@ class SettingsPage:
         # Trusted Programs section
         self.create_section_label(content_frame, "Trusted Programs")
         
-        # Create treeview for trusted programs
-        self.trusted_tree = self.create_treeview(content_frame, 
-                                                columns=("Program", "Enabled", "Deleted"),
-                                                headings=("Program Name", "Enabled", "Deleted"),
-                                                widths=(300, 80, 80),
-                                                height=8)
+        # Search frame (outside scrollable frame)
+        search_frame = ctk.CTkFrame(content_frame, fg_color="#404040")
+        search_frame.pack(fill="x", pady=(0, 5))
         
-        # Load trusted programs
+        # Search label
+        search_label = ctk.CTkLabel(
+            search_frame, 
+            text="Search:",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#404040",
+            text_color="white"
+        )
+        search_label.pack(side="left", padx=(0, 5))
+        
+        # Search entry
+        self.trusted_search_var = tk.StringVar()
+        self.trusted_search_entry = ctk.CTkEntry(
+            search_frame,
+            textvariable=self.trusted_search_var,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            width=200,
+            height=25,
+            fg_color="#505050",
+            text_color="white",
+            border_color="#505050",
+            placeholder_text="Search programs..."
+        )
+        self.trusted_search_entry.pack(side="left", padx=(0, 5))
+        
+        # Ensure the search entry can receive focus
+        self.trusted_search_entry.bind("<Button-1>", lambda e: self.trusted_search_entry.focus_set())
+        self.trusted_search_entry.bind("<FocusIn>", lambda e: self.trusted_search_entry.focus_set())
+        
+        # Bind search event
+        self.trusted_search_var.trace("w", self.on_trusted_search_changed)
+        
+        # Clear search button
+        clear_search_btn = ctk.CTkButton(
+            search_frame,
+            text="Clear",
+            command=self.clear_trusted_search,
+            font=ctk.CTkFont(family="Segoe UI", size=9),
+            width=50,
+            height=25,
+            fg_color="#6c757d",
+            hover_color="#5a6268"
+        )
+        clear_search_btn.pack(side="left")
+        
+        # Create scrollable frame for the patterns list only
+        scrollable_frame = ctk.CTkScrollableFrame(
+            content_frame,
+            fg_color="#404040"
+        )
+        scrollable_frame.pack(fill="both", expand=True)
+        
+        # Container for interactive toggles (inside scrollable frame)
+        self.trusted_programs_container = ctk.CTkFrame(scrollable_frame, fg_color="#404040")
+        self.trusted_programs_container.pack(fill="both", expand=True, pady=5)
+
+        # Store original programs list for filtering
+        self._all_trusted_programs = []
+        
+        # Load interactive list
         self.load_trusted_programs()
 
     def create_custom_regex_card(self):
@@ -281,12 +422,107 @@ class SettingsPage:
         # Custom Regex Patterns section
         self.create_section_label(content_frame, "Custom Regex Patterns")
         
-        # Create treeview for patterns
-        self.patterns_tree = self.create_treeview(content_frame, 
-                                                 columns=("Regex", "Replacement", "Apply For", "Priority", "Enabled"),
-                                                 headings=("Regex Pattern", "Replacement", "Apply For", "Priority", "Enabled"),
-                                                 widths=(150, 100, 80, 80, 80),
-                                                 height=6)
+        # Add New button
+        self.add_new_btn = ctk.CTkButton(
+            content_frame,
+            text="Add New Pattern",
+            command=self.toggle_add_regex_form,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#4a90e2",
+            hover_color="#357abd",
+            height=25,
+            width=120
+        )
+        self.add_new_btn.pack(anchor="w", pady=(0, 5))
+        
+        # Inline form (initially hidden)
+        self.regex_form_container = ctk.CTkFrame(content_frame, fg_color="#404040")
+        self.regex_form_container.pack(fill="x", pady=(0, 5))
+        self.regex_form_container.pack_forget()  # Initially hidden
+        
+        # Form fields
+        form_fields_frame = ctk.CTkFrame(self.regex_form_container, fg_color="#404040")
+        form_fields_frame.pack(fill="x", pady=10)
+        
+        # Regex pattern input
+        regex_label = ctk.CTkLabel(form_fields_frame, text="Regex Pattern:", font=ctk.CTkFont(family="Segoe UI", size=10))
+        regex_label.pack(anchor="w", pady=(0, 2))
+        self.regex_entry = ctk.CTkEntry(form_fields_frame, height=25, placeholder_text="Enter regex pattern...")
+        self.regex_entry.pack(fill="x", pady=(0, 10))
+        
+        # Replacement input
+        replacement_label = ctk.CTkLabel(form_fields_frame, text="Replacement:", font=ctk.CTkFont(family="Segoe UI", size=10))
+        replacement_label.pack(anchor="w", pady=(0, 2))
+        self.replacement_entry = ctk.CTkEntry(form_fields_frame, height=25, placeholder_text="Enter replacement text...")
+        self.replacement_entry.pack(fill="x", pady=(0, 10))
+        
+        # Apply For input
+        apply_for_label = ctk.CTkLabel(form_fields_frame, text="Apply For:", font=ctk.CTkFont(family="Segoe UI", size=10))
+        apply_for_label.pack(anchor="w", pady=(0, 2))
+        self.apply_for_entry = ctk.CTkEntry(form_fields_frame, height=25, placeholder_text="e.g., AI, Code, Both...")
+        self.apply_for_entry.pack(fill="x", pady=(0, 10))
+        
+        # Checkboxes and buttons frame
+        controls_frame = ctk.CTkFrame(form_fields_frame, fg_color="#404040")
+        controls_frame.pack(fill="x", pady=(0, 10))
+        
+        # Checkboxes
+        checkboxes_frame = ctk.CTkFrame(controls_frame, fg_color="#404040")
+        checkboxes_frame.pack(side="left")
+        
+        # Enabled checkbox
+        self.regex_enabled_var = tk.BooleanVar(value=True)
+        enabled_cb = ctk.CTkCheckBox(
+            checkboxes_frame,
+            text="Enabled",
+            variable=self.regex_enabled_var,
+            font=ctk.CTkFont(family="Segoe UI", size=10)
+        )
+        enabled_cb.pack(side="left", padx=(0, 15))
+        
+        # Priority checkbox
+        self.regex_priority_var = tk.BooleanVar(value=False)
+        priority_cb = ctk.CTkCheckBox(
+            checkboxes_frame,
+            text="First Priority",
+            variable=self.regex_priority_var,
+            font=ctk.CTkFont(family="Segoe UI", size=10)
+        )
+        priority_cb.pack(side="left")
+        
+        # Buttons
+        buttons_frame = ctk.CTkFrame(controls_frame, fg_color="#404040")
+        buttons_frame.pack(side="right")
+        
+        # Save button
+        save_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Save",
+            command=self.save_new_regex_pattern_inline,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#4a90e2",
+            hover_color="#357abd",
+            height=25,
+            width=60
+        )
+        save_btn.pack(side="right", padx=(5, 0))
+        
+        # Cancel button
+        cancel_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Cancel",
+            command=self.hide_add_regex_form,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#6c757d",
+            hover_color="#5a6268",
+            height=25,
+            width=60
+        )
+        cancel_btn.pack(side="right")
+        
+        # Container for interactive toggles
+        self.regex_patterns_container = ctk.CTkFrame(content_frame, fg_color="#404040")
+        self.regex_patterns_container.pack(fill="both", expand=True, pady=5)
         
         # Load patterns
         self.load_custom_regex_patterns()
@@ -303,14 +539,11 @@ class SettingsPage:
         # Code Protection Types section
         self.create_section_label(content_frame, "Code Protection Types")
         
-        # Create treeview for code types
-        self.code_tree = self.create_treeview(content_frame, 
-                                             columns=("Type", "Enabled"),
-                                             headings=("Protection Type", "Enabled"),
-                                             widths=(200, 80),
-                                             height=6)
-        
-        # Load code types
+        # Container for interactive toggles
+        self.code_types_container = ctk.CTkFrame(content_frame, fg_color="#404040")
+        self.code_types_container.pack(fill="x", expand=False, pady=5)
+
+        # Load interactive toggles
         self.load_code_protection_types()
 
     def create_checkbox(self, parent, text, variable):
@@ -423,60 +656,233 @@ class SettingsPage:
         return text_widget
 
     def load_ai_types(self):
-        """Load AI processing types into text widget"""
-        self.ai_tree.delete("1.0", "end")
-        
-        # Create header
-        header = f"{'Description':<30} {'Short Description':<20} {'Enabled':<10}\n"
-        self.ai_tree.insert("1.0", header)
-        self.ai_tree.insert("end", "-" * 60 + "\n")
+        """Render AI processing types as interactive toggles that persist to DB"""
+        # Clear previous children
+        for child in getattr(self, 'ai_types_container', []).winfo_children() if hasattr(self, 'ai_types_container') else []:
+            child.destroy()
+
+        self._ai_type_vars = {}
         
         ai_types = self.config_service.aiProcessingTypes
         for ai_type in ai_types:
-            row = f"{ai_type['description']:<30} {ai_type['shortDescription']:<20} {'Yes' if ai_type['enabled'] else 'No':<10}\n"
-            self.ai_tree.insert("end", row)
+            description = ai_type.get('description', '')
+            short_description = ai_type.get('shortDescription', '')
+            enabled = bool(ai_type.get('enabled'))
+            ai_mask_option = ai_type.get('aiMaskOption')
 
-    def load_trusted_programs(self):
-        """Load trusted programs into text widget"""
-        self.trusted_tree.delete("1.0", "end")
+            row = ctk.CTkFrame(self.ai_types_container, fg_color="#404040")
+            row.pack(fill="x", pady=2)
+
+            # Short description label
+            short_desc_label = ctk.CTkLabel(
+                row, 
+                text=short_description, 
+                font=ctk.CTkFont(family="Segoe UI", size=10), 
+                text_color="white"
+            )
+            short_desc_label.pack(side="left", padx=(0, 5))
+
+            # Info icon for description hover
+            info_label = ctk.CTkLabel(
+                row, 
+                text="ⓘ", 
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), 
+                text_color="#4a90e2",
+                cursor="hand2"
+            )
+            info_label.pack(side="left", padx=(0, 10))
+            
+            # Create tooltip for the info icon (Balloon if available, otherwise Tooltip class)
+            if self.balloon is not None:
+                self.balloon.bind_widget(info_label, balloonmsg=description)
+            else:
+                Tooltip(info_label, description)
+
+            # Enabled checkbox
+            enabled_var = tk.BooleanVar(value=enabled)
+            enabled_cb = self.create_checkbox(row, "", enabled_var)
+            enabled_cb.configure(command=lambda amo=ai_mask_option, v=enabled_var: self.on_toggle_ai_type(amo, v))
+            enabled_cb.pack(side="right", padx=(10, 0))
+
+            self._ai_type_vars[ai_mask_option] = enabled_var
+
+    def load_trusted_programs(self, search_term=""):
+        """Render trusted programs as interactive toggles that persist to DB"""
+        # Store all programs if not already stored
+        if not hasattr(self, '_all_trusted_programs') or not self._all_trusted_programs:
+            self._all_trusted_programs = self.config_service.trustedPrograms.copy()
         
-        # Create header
-        header = f"{'Program Name':<30} {'Enabled':<10} {'Deleted':<10}\n"
-        self.trusted_tree.insert("1.0", header)
-        self.trusted_tree.insert("end", "-" * 50 + "\n")
+        # Filter programs based on search term
+        filtered_programs = self._all_trusted_programs
+        if search_term:
+            search_lower = search_term.lower()
+            filtered_programs = [
+                program for program in self._all_trusted_programs
+                if search_lower in program.get('programName', '').lower()
+            ]
         
-        trusted_programs = self.config_service.trustedPrograms
-        for program in trusted_programs:
-            row = f"{program['programName']:<30} {'Yes' if program['enabled'] else 'No':<10} {'Yes' if program['deleted'] else 'No':<10}\n"
-            self.trusted_tree.insert("end", row)
+        # Clear previous children
+        for child in getattr(self, 'trusted_programs_container', []).winfo_children() if hasattr(self, 'trusted_programs_container') else []:
+            child.destroy()
+
+        self._trusted_vars = {}
+        
+        # Show "No results" message if no programs match
+        if not filtered_programs:
+            no_results_label = ctk.CTkLabel(
+                self.trusted_programs_container,
+                text="No programs found matching search criteria",
+                font=ctk.CTkFont(family="Segoe UI", size=10),
+                text_color="#888888"
+            )
+            no_results_label.pack(pady=20)
+            return
+        
+        for program in filtered_programs:
+            name = program.get('programName')
+            enabled = bool(program.get('enabled'))
+            deleted = bool(program.get('deleted'))
+
+            row = ctk.CTkFrame(self.trusted_programs_container, fg_color="#404040")
+            row.pack(fill="x", pady=2)
+
+            name_label = ctk.CTkLabel(row, text=name, font=ctk.CTkFont(family="Segoe UI", size=10), text_color="white")
+            name_label.pack(side="left")
+
+            enabled_var = tk.BooleanVar(value=enabled)
+            enabled_cb = self.create_checkbox(row, "Enabled", enabled_var)
+            enabled_cb.configure(command=lambda pn=name, v=enabled_var: self.on_toggle_trusted_program_enabled(pn, v))
+            enabled_cb.pack(side="right", padx=(10, 0))
+
+            deleted_var = tk.BooleanVar(value=deleted)
+            deleted_cb = self.create_checkbox(row, "Deleted", deleted_var)
+            deleted_cb.configure(command=lambda pn=name, v=deleted_var: self.on_toggle_trusted_program_deleted(pn, v))
+            deleted_cb.pack(side="right", padx=(10, 0))
+
+            self._trusted_vars[name] = {"enabled": enabled_var, "deleted": deleted_var}
+
+    def on_toggle_trusted_program_enabled(self, program_name: str, var: tk.BooleanVar):
+        new_value = bool(var.get())
+        success = self.config_service.update_trusted_program(program_name, enabled=new_value)
+        if not success:
+            var.set(not new_value)
+            messagebox.showerror("Error", f"Failed to update '{program_name}' enabled flag.")
+
+    def on_toggle_trusted_program_deleted(self, program_name: str, var: tk.BooleanVar):
+        new_value = bool(var.get())
+        success = self.config_service.update_trusted_program(program_name, deleted=new_value)
+        if not success:
+            var.set(not new_value)
+            messagebox.showerror("Error", f"Failed to update '{program_name}' deleted flag.")
+
+    def on_trusted_search_changed(self, *args):
+        """Handle search input changes"""
+        search_term = self.trusted_search_var.get()
+        self.load_trusted_programs(search_term)
+
+    def clear_trusted_search(self):
+        """Clear search input and show all programs"""
+        self.trusted_search_var.set("")
+        self.load_trusted_programs("")
+
+    def on_toggle_ai_type(self, ai_mask_option: int, var: tk.BooleanVar):
+        """Handle toggle of an AI processing type and persist change."""
+        new_value = bool(var.get())
+        success = self.config_service.update_ai_processing_type(ai_mask_option, new_value)
+        if not success:
+            # Revert UI state if failed
+            var.set(not new_value)
+            messagebox.showerror("Error", f"Failed to update AI processing type '{ai_mask_option}'.")
+
+
 
     def load_custom_regex_patterns(self):
-        """Load custom regex patterns into text widget"""
-        self.patterns_tree.delete("1.0", "end")
-        
-        # Create header
-        header = f"{'Regex Pattern':<20} {'Replacement':<15} {'Apply For':<12} {'Priority':<10} {'Enabled':<10}\n"
-        self.patterns_tree.insert("1.0", header)
-        self.patterns_tree.insert("end", "-" * 67 + "\n")
+        """Render custom regex patterns as interactive toggles that persist to DB"""
+        # Clear previous children
+        for child in getattr(self, 'regex_patterns_container', []).winfo_children() if hasattr(self, 'regex_patterns_container') else []:
+            child.destroy()
+
+        self._regex_pattern_vars = {}
         
         patterns = self.config_service.customRegexPatterns
         for pattern in patterns:
-            row = f"{pattern['regex']:<20} {pattern['replacement']:<15} {pattern['applyFor']:<12} {'Yes' if pattern['firstPriority'] else 'No':<10} {'Yes' if pattern['enabled'] else 'No':<10}\n"
-            self.patterns_tree.insert("end", row)
+            pattern_id = pattern.get('id')
+            regex = pattern.get('regex', '')
+            replacement = pattern.get('replacement', '')
+            apply_for = pattern.get('applyFor', '')
+            enabled = bool(pattern.get('enabled'))
+            first_priority = bool(pattern.get('firstPriority'))
+
+            # Create main row frame
+            row = ctk.CTkFrame(self.regex_patterns_container, fg_color="#404040")
+            row.pack(fill="x", pady=2)
+
+            # Left side - Pattern info
+            info_frame = ctk.CTkFrame(row, fg_color="#404040")
+            info_frame.pack(side="left", fill="x", expand=True, padx=(0, 10))
+
+            # Regex pattern (truncated if too long)
+            regex_display = regex[:30] + "..." if len(regex) > 30 else regex
+            regex_label = ctk.CTkLabel(
+                info_frame, 
+                text=f"Regex: {regex_display}", 
+                font=ctk.CTkFont(family="Segoe UI", size=9), 
+                text_color="white"
+            )
+            regex_label.pack(anchor="w")
+
+            # Replacement and Apply For
+            details_text = f"Replace: {replacement[:15]}{'...' if len(replacement) > 15 else ''} | For: {apply_for}"
+            details_label = ctk.CTkLabel(
+                info_frame, 
+                text=details_text, 
+                font=ctk.CTkFont(family="Segoe UI", size=8), 
+                text_color="#cccccc"
+            )
+            details_label.pack(anchor="w")
+
+            # Right side - Toggle controls
+            controls_frame = ctk.CTkFrame(row, fg_color="#404040")
+            controls_frame.pack(side="right")
+
+            # Enabled checkbox
+            enabled_var = tk.BooleanVar(value=enabled)
+            enabled_cb = self.create_checkbox(controls_frame, "Enabled", enabled_var)
+            enabled_cb.configure(command=lambda pid=pattern_id, v=enabled_var: self.on_toggle_regex_enabled(pid, v))
+            enabled_cb.pack(side="right", padx=(5, 0))
+
+            # Priority checkbox
+            priority_var = tk.BooleanVar(value=first_priority)
+            priority_cb = self.create_checkbox(controls_frame, "Priority", priority_var)
+            priority_cb.configure(command=lambda pid=pattern_id, v=priority_var: self.on_toggle_regex_priority(pid, v))
+            priority_cb.pack(side="right", padx=(5, 0))
+
+            self._regex_pattern_vars[pattern_id] = {"enabled": enabled_var, "priority": priority_var}
 
     def load_code_protection_types(self):
-        """Load code protection types into text widget"""
-        self.code_tree.delete("1.0", "end")
-        
-        # Create header
-        header = f"{'Protection Type':<25} {'Enabled':<10}\n"
-        self.code_tree.insert("1.0", header)
-        self.code_tree.insert("end", "-" * 35 + "\n")
-        
-        code_types = self.config_service.codeProtectionTypes
-        for code_type in code_types:
-            row = f"{code_type['typeName']:<25} {'Yes' if code_type['enabled'] else 'No':<10}\n"
-            self.code_tree.insert("end", row)
+        """Render code protection types as toggles that persist to DB"""
+        # Clear previous children
+        for child in getattr(self, 'code_types_container', []).winfo_children() if hasattr(self, 'code_types_container') else []:
+            child.destroy()
+
+        self._code_type_vars = {}
+        for code_type in self.config_service.codeProtectionTypes:
+            type_name = code_type.get('typeName')
+            enabled = bool(code_type.get('enabled'))
+            var = tk.BooleanVar(value=enabled)
+            cb = self.create_checkbox(self.code_types_container, type_name, var)
+            cb.configure(command=lambda tn=type_name, v=var: self.on_toggle_code_type(tn, v))
+            cb.pack(anchor="w", pady=2)
+            self._code_type_vars[type_name] = var
+
+    def on_toggle_code_type(self, type_name: str, var: tk.BooleanVar):
+        """Handle toggle of a code protection type and persist change."""
+        new_value = bool(var.get())
+        success = self.config_service.update_code_protection_type(type_name, new_value)
+        if not success:
+            # Revert UI state if failed
+            var.set(not new_value)
+            messagebox.showerror("Error", f"Failed to update '{type_name}'.")
 
     def save_settings(self):
         """Save all settings to database"""
@@ -496,12 +902,18 @@ class SettingsPage:
             
             # Email settings
             self.config_service.email_enabled = self.email_enabled_var.get()
-            self.config_service.email_mask_type = int(self.email_mask_type_var.get().split()[0])
+            # Convert selected text back to numeric value
+            selected_email_text = self.email_mask_type_var.get()
+            email_mask_index = self.email_mask_options.index(selected_email_text) if selected_email_text in self.email_mask_options else 0
+            self.config_service.email_mask_type = self.email_mask_values[email_mask_index]
             self.config_service.email_defined_text = self.email_defined_text_var.get()
             
             # Phone settings
             self.config_service.phone_enabled = self.phone_enabled_var.get()
-            self.config_service.phone_mask_type = int(self.phone_mask_type_var.get().split()[0])
+            # Convert selected text back to numeric value
+            selected_phone_text = self.phone_mask_type_var.get()
+            phone_mask_index = self.phone_mask_options.index(selected_phone_text) if selected_phone_text in self.phone_mask_options else 0
+            self.config_service.phone_mask_type = self.phone_mask_values[phone_mask_index]
             self.config_service.phone_defined_text = self.phone_defined_text_var.get()
             
             # AI settings
@@ -579,3 +991,131 @@ class SettingsPage:
     def hide(self):
         """Hide the settings page"""
         self.frame.pack_forget() 
+
+    def on_email_mask_type_changed(self, selected_value):
+        """Handle email mask type selection change"""
+        if selected_value == "Defined Text":
+            # Pack the email defined text frame right after the email combobox
+            self.email_defined_text_frame.pack(fill="x", pady=2, after=self.email_combobox_frame)
+        else:
+            self.email_defined_text_frame.pack_forget()
+
+    def on_phone_mask_type_changed(self, selected_value):
+        """Handle phone mask type selection change"""
+        if selected_value == "Defined Text":
+            # Pack the phone defined text frame right after the phone combobox
+            self.phone_defined_text_frame.pack(fill="x", pady=2, after=self.phone_combobox_frame)
+        else:
+            self.phone_defined_text_frame.pack_forget()
+
+    def save_masking_settings(self):
+        """Save masking settings to database"""
+        try:
+            # Email settings
+            self.config_service.email_enabled = self.email_enabled_var.get()
+            # Convert selected text back to numeric value
+            selected_email_text = self.email_mask_type_var.get()
+            email_mask_index = self.email_mask_options.index(selected_email_text) if selected_email_text in self.email_mask_options else 0
+            self.config_service.email_mask_type = self.email_mask_values[email_mask_index]
+            self.config_service.email_defined_text = self.email_defined_text_var.get()
+            
+            # Phone settings
+            self.config_service.phone_enabled = self.phone_enabled_var.get()
+            # Convert selected text back to numeric value
+            selected_phone_text = self.phone_mask_type_var.get()
+            phone_mask_index = self.phone_mask_options.index(selected_phone_text) if selected_phone_text in self.phone_mask_options else 0
+            self.config_service.phone_mask_type = self.phone_mask_values[phone_mask_index]
+            self.config_service.phone_defined_text = self.phone_defined_text_var.get()
+            
+            # Minimum character lengths
+            self.config_service.min_char_lenght_ai = int(self.min_char_ai_var.get())
+            self.config_service.min_char_lenght_code = int(self.min_char_code_var.get())
+            self.config_service.min_char_lenght_custom_regex = int(self.min_char_regex_var.get())
+            
+            # Save to database
+            self.config_service.save_config_to_database()
+            
+            messagebox.showinfo("Success", "Masking settings saved successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save masking settings: {str(e)}")
+
+    def on_toggle_regex_enabled(self, pattern_id: int, var: tk.BooleanVar):
+        """Handle toggle of regex pattern enabled flag and persist change."""
+        new_value = bool(var.get())
+        success = self.config_service.update_custom_regex_pattern(pattern_id, enabled=new_value)
+        if not success:
+            # Revert UI state if failed
+            var.set(not new_value)
+            messagebox.showerror("Error", f"Failed to update regex pattern enabled flag.")
+
+    def on_toggle_regex_priority(self, pattern_id: int, var: tk.BooleanVar):
+        """Handle toggle of regex pattern priority flag and persist change."""
+        new_value = bool(var.get())
+        success = self.config_service.update_custom_regex_pattern(pattern_id, first_priority=new_value)
+        if not success:
+            # Revert UI state if failed
+            var.set(not new_value)
+            messagebox.showerror("Error", f"Failed to update regex pattern priority flag.")
+
+    def toggle_add_regex_form(self):
+        """Toggle the inline add regex form visibility"""
+        if self.regex_form_container.winfo_viewable():
+            self.hide_add_regex_form()
+        else:
+            self.show_add_regex_form()
+
+    def show_add_regex_form(self):
+        """Show the inline add regex form"""
+        self.regex_form_container.pack(fill="x", pady=(0, 5))
+        self.add_new_btn.configure(text="Cancel Add")
+
+    def hide_add_regex_form(self):
+        """Hide the inline add regex form and clear fields"""
+        self.regex_form_container.pack_forget()
+        self.add_new_btn.configure(text="Add New Pattern")
+        # Clear form fields
+        self.regex_entry.delete(0, "end")
+        self.replacement_entry.delete(0, "end")
+        self.apply_for_entry.delete(0, "end")
+        self.regex_enabled_var.set(True)
+        self.regex_priority_var.set(False)
+
+    def save_new_regex_pattern_inline(self):
+        """Save new regex pattern from inline form"""
+        try:
+            regex = self.regex_entry.get().strip()
+            replacement = self.replacement_entry.get().strip()
+            apply_for = self.apply_for_entry.get().strip()
+            enabled = self.regex_enabled_var.get()
+            priority = self.regex_priority_var.get()
+            
+            if not regex:
+                messagebox.showerror("Error", "Regex pattern is required!")
+                return
+            
+            if not replacement:
+                messagebox.showerror("Error", "Replacement text is required!")
+                return
+            
+            if not apply_for:
+                messagebox.showerror("Error", "Apply For field is required!")
+                return
+            
+            # Add to database
+            pattern_id = self.config_service.config_repository.add_custom_regex_pattern(
+                regex, replacement, apply_for, priority, enabled
+            )
+            
+            if pattern_id:
+                # Refresh the patterns list
+                self.config_service.load_config_from_database()
+                self.load_custom_regex_patterns()
+                
+                messagebox.showinfo("Success", "Regex pattern added successfully!")
+                self.hide_add_regex_form()
+            else:
+                messagebox.showerror("Error", "Failed to add regex pattern!")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save regex pattern: {str(e)}") 

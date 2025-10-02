@@ -65,6 +65,24 @@ class ConfigRepository:
         cur.close()
         return result
     
+    def update_ai_processing_type(self, ai_mask_option, enabled=None):
+        conn = self.db.connect()
+        cur = conn.cursor()
+        set_parts = []
+        values = []
+        if enabled is not None:
+            set_parts.append("enabled = ?")
+            values.append(enabled)
+        if not set_parts:
+            cur.close()
+            return False
+        set_clause = ', '.join(set_parts)
+        values.append(ai_mask_option)
+        cur.execute(f"UPDATE ai_processing_types SET {set_clause} WHERE ai_mask_option = ?", values)
+        conn.commit()
+        cur.close()
+        return True
+    
     # Trusted Programs CRUD
     def add_trusted_program(self, program_name, enabled, deleted):
         conn = self.db.connect()
@@ -86,6 +104,27 @@ class ConfigRepository:
         result = cur.fetchall()
         cur.close()
         return result
+
+    def update_trusted_program(self, program_name, enabled=None, deleted=None):
+        conn = self.db.connect()
+        cur = conn.cursor()
+        set_parts = []
+        values = []
+        if enabled is not None:
+            set_parts.append("enabled = ?")
+            values.append(enabled)
+        if deleted is not None:
+            set_parts.append("deleted = ?")
+            values.append(deleted)
+        if not set_parts:
+            cur.close()
+            return False
+        set_clause = ', '.join(set_parts)
+        values.append(program_name)
+        cur.execute(f"UPDATE trusted_programs SET {set_clause} WHERE program_name = ?", values)
+        conn.commit()
+        cur.close()
+        return True
 
     # Code Protection Types CRUD
     def add_code_protection_type(self, type_name, enabled):
@@ -109,6 +148,22 @@ class ConfigRepository:
         cur.close()
         return result
     
+    def update_code_protection_type(self, type_name, enabled):
+        conn = self.db.connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE code_protection_types SET enabled = ? WHERE type_name = ?", (enabled, type_name))
+        conn.commit()
+        cur.close()
+        return True
+    
+    def delete_code_protection_type(self, type_name):
+        conn = self.db.connect()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM code_protection_types WHERE type_name = ?", (type_name,))
+        conn.commit()
+        cur.close()
+        return True
+    
     # Custom Regex Patterns CRUD
     def add_custom_regex_pattern(self, regex, replacement, apply_for, first_priority, enabled):
         conn = self.db.connect()
@@ -130,6 +185,27 @@ class ConfigRepository:
         result = cur.fetchall()
         cur.close()
         return result
+    
+    def update_custom_regex_pattern(self, pattern_id, enabled=None, first_priority=None):
+        conn = self.db.connect()
+        cur = conn.cursor()
+        set_parts = []
+        values = []
+        if enabled is not None:
+            set_parts.append("enabled = ?")
+            values.append(enabled)
+        if first_priority is not None:
+            set_parts.append("first_priority = ?")
+            values.append(first_priority)
+        if not set_parts:
+            cur.close()
+            return False
+        set_clause = ', '.join(set_parts)
+        values.append(pattern_id)
+        cur.execute(f"UPDATE custom_regex_patterns SET {set_clause} WHERE id = ?", values)
+        conn.commit()
+        cur.close()
+        return True
     
     # Spacy Models CRUD
     def add_spacy_model(self, model_language, model_name, model_path, model_short_name, model_description, model_size, enabled, downloaded):
