@@ -6,14 +6,7 @@ from src.db.clipboard_repository import ClipboardRepository
 from src.utils.scroll_manager import ScrollManager
 
 import tkinter.messagebox as messagebox
-
-# Try to import Balloon, fallback to None if not available
-try:
-    from tkinter.tix import Balloon
-    BALLOON_AVAILABLE = True
-except ImportError:
-    Balloon = None
-    BALLOON_AVAILABLE = False
+from src.ui.tooltip_info import ToolTipInfo
 
 class SettingsPage:
     def __init__(self, parent, config_service, main_window=None):
@@ -25,16 +18,6 @@ class SettingsPage:
         # Configure customtkinter appearance
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
-        
-        # Initialize Balloon tooltip if available, otherwise use None
-        if BALLOON_AVAILABLE:
-            try:
-                self.balloon = Balloon(parent)
-            except Exception as e:
-                print(f"Warning: Balloon tooltip not available: {e}")
-                self.balloon = None
-        else:
-            self.balloon = None
         
         # Create the main layout
         self.create_layout()
@@ -97,6 +80,7 @@ class SettingsPage:
         self.create_trusted_programs_card()
         self.create_custom_regex_card()
         self.create_code_protection_card()
+        self.create_spacy_card()
 
     def create_settings_card(self, title, width=350, height=350):
         """Create a base settings card with modern design"""
@@ -140,10 +124,6 @@ class SettingsPage:
         """Create general settings card"""
         content_frame = self.create_settings_card("General Settings", 350, 350)
         
-        # Disable all features
-        self.disable_all_features_var = tk.BooleanVar(value=self.config_service.disable_all_features)
-        disable_all_cb = self.create_checkbox(content_frame, "Disable All Features", self.disable_all_features_var)
-        disable_all_cb.pack(anchor="w", pady=2)
         
         # Disable masking
         self.disable_masking_var = tk.BooleanVar(value=self.config_service.disable_masking)
@@ -154,30 +134,205 @@ class SettingsPage:
         self.dark_mode_var = tk.BooleanVar(value=self.config_service.darkMode)
         dark_mode_cb = self.create_checkbox(content_frame, "Dark Mode", self.dark_mode_var)
         dark_mode_cb.pack(anchor="w", pady=2)
+                
+    def create_spacy_card(self):
+        """Create spacy settings card, list all spacy models, download, enable just one model, delete model"""
+        content_frame = self.create_settings_card("Spacy Settings", 350, 350)
         
-        # Show progress bar
-        self.show_progress_bar_var = tk.BooleanVar(value=self.config_service.show_progress_bar)
-        progress_cb = self.create_checkbox(content_frame, "Show Progress Bar", self.show_progress_bar_var)
-        progress_cb.pack(anchor="w", pady=2)
+        # Spacy models section
+        self.create_section_label(content_frame, "Spacy Models")
         
-        # Progress bar times section
-        self.create_section_label(content_frame, "Progress Bar Times (minutes)")
-        
-        # Short model time
-        self.create_input_field(content_frame, "Short Model:", 
-                               tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_short_model)),
-                               "short_model_time_var")
-        
-        # Medium model time
-        self.create_input_field(content_frame, "Medium Model:", 
-                               tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_medium_model)),
-                               "medium_model_time_var")
-        
-        # Long model time
-        self.create_input_field(content_frame, "Long Model:", 
-                               tk.StringVar(value=str(self.config_service.progress_bar_time_minutes_for_long_model)),
-                               "long_model_time_var")
+        # Top controls: Enabled Model (downloaded only)
+        controls_frame = ctk.CTkFrame(content_frame, fg_color="#404040")
+        controls_frame.pack(fill="x", pady=(0, 5))
 
+        label = ctk.CTkLabel(
+            controls_frame,
+            text="Enabled Model:",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            fg_color="#404040",
+            text_color="white"
+        )
+        label.pack(side="left", padx=(0, 6))
+
+        self._enabled_spacy_model_names = [
+            m.get('modelShortName') or m.get('modelName') or ''
+            for m in getattr(self.config_service, 'spacyModels', []) if bool(m.get('downloaded'))
+        ] or [""]
+        # Preselect currently enabled downloaded model if any
+        current_enabled = next((m.get('modelShortName') or m.get('modelName') for m in self.config_service.spacyModels if m.get('enabled') and m.get('downloaded')), self._enabled_spacy_model_names[0])
+        self.spacy_enabled_select_var = tk.StringVar(value=current_enabled)
+        self.spacy_enabled_select_combo = ctk.CTkOptionMenu(
+            controls_frame,
+            variable=self.spacy_enabled_select_var,
+            values=self._enabled_spacy_model_names,
+            command=self.on_spacy_enabled_changed,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            width=200,
+            height=25,
+            fg_color="#505050",
+            button_color="#4a90e2",
+            button_hover_color="#357abd",
+            text_color="white"
+        )
+        self.spacy_enabled_select_combo.pack(side="left")
+
+        # Spacy models list
+        self.create_spacy_models_list(content_frame)
+        
+    def create_spacy_models_list(self, parent):
+        """Create spacy models list, list all spacy models, download, enable just one model, delete model"""
+        # Clear previous list if exists
+        if hasattr(self, 'spacy_models_list_frame') and self.spacy_models_list_frame is not None:
+            try:
+                for child in self.spacy_models_list_frame.winfo_children():
+                    child.destroy()
+                self.spacy_models_list_frame.pack_forget()
+            except Exception:
+                pass
+
+        self.spacy_models_list_frame = ctk.CTkFrame(parent, fg_color="#404040")
+        self.spacy_models_list_frame.pack(fill="both", expand=True, pady=5)
+
+        # Render models from config service if available
+        models = getattr(self.config_service, 'spacyModels', []) or []
+        if not models:
+            empty_label = ctk.CTkLabel(
+                self.spacy_models_list_frame,
+                text="No spaCy models found in database.",
+                font=ctk.CTkFont(family="Segoe UI", size=10),
+                text_color="#cccccc"
+            )
+            empty_label.pack(pady=10)
+            return
+
+        for model in models:
+            row = ctk.CTkFrame(self.spacy_models_list_frame, fg_color="#404040")
+            row.pack(fill="x", pady=2)
+
+            short_name = model.get('modelShortName') or model.get('modelName') or 'Unknown'
+            size_text = model.get('modelSize') or ''
+            desc_text = model.get('modelDescription') or ''
+
+            left_frame = ctk.CTkFrame(row, fg_color="#404040")
+            left_frame.pack(side="left", fill="x", expand=True)
+
+            title_label = ctk.CTkLabel(
+                left_frame,
+                text=short_name,
+                font=ctk.CTkFont(family="Segoe UI", size=10),
+                text_color="white"
+            )
+            title_label.pack(anchor="w")
+
+            status_parts = []
+            status_parts.append("enabled" if bool(model.get('enabled')) else "disabled")
+            status_parts.append("downloaded" if bool(model.get('downloaded')) else "not downloaded")
+            if size_text:
+                status_parts.append(str(size_text))
+            status = " | ".join(status_parts)
+
+            status_label = ctk.CTkLabel(
+                left_frame,
+                text=status,
+                font=ctk.CTkFont(family="Segoe UI", size=9),
+                text_color="#cccccc"
+            )
+            status_label.pack(anchor="w")
+
+            right_frame = ctk.CTkFrame(row, fg_color="#404040")
+            right_frame.pack(side="right")
+
+            if bool(model.get('downloaded')):
+                delete_btn = ctk.CTkButton(
+                    right_frame,
+                    text="Delete",
+                    command=lambda sn=short_name: self.on_spacy_row_delete_clicked(sn),
+                    font=ctk.CTkFont(family="Segoe UI", size=9),
+                    fg_color="#6c757d",
+                    hover_color="#5a6268",
+                    height=25,
+                    width=70
+                )
+                delete_btn.pack(side="right")
+            else:
+                download_btn = ctk.CTkButton(
+                    right_frame,
+                    text="Download",
+                    command=lambda sn=short_name: self.on_spacy_row_download_clicked(sn),
+                    font=ctk.CTkFont(family="Segoe UI", size=9),
+                    fg_color="#4a90e2",
+                    hover_color="#357abd",
+                    height=25,
+                    width=90
+                )
+                download_btn.pack(side="right")
+
+    def _refresh_spacy_section(self):
+        # Refresh enabled combobox values (downloaded only) and list
+        self._enabled_spacy_model_names = [
+            m.get('modelShortName') or m.get('modelName') or ''
+            for m in getattr(self.config_service, 'spacyModels', []) if bool(m.get('downloaded'))
+        ] or [""]
+        self.spacy_enabled_select_combo.configure(values=self._enabled_spacy_model_names)
+        if self.spacy_enabled_select_var.get() not in self._enabled_spacy_model_names:
+            self.spacy_enabled_select_var.set(self._enabled_spacy_model_names[0])
+        self.create_spacy_models_list(self.spacy_models_list_frame.master)
+
+    def on_spacy_row_download_clicked(self, model_short):
+        try:
+            model_short = (model_short or "").strip()
+            if not model_short:
+                messagebox.showerror("Error", "Invalid model name.")
+                return
+            from src.services.checkers.spacy_checker import SpacyChecker
+            checker = SpacyChecker()
+            ok = checker.download_spacy_model(model_short)
+            if not ok:
+                messagebox.showerror("Error", f"Failed to download spaCy model '{model_short}'.")
+                return
+            if self.config_service.update_spacy_model_flags(model_short, downloaded=True):
+                self.config_service.load_config_from_database()
+                self._refresh_spacy_section()
+                messagebox.showinfo("Success", f"Model '{model_short}' downloaded.")
+            else:
+                messagebox.showerror("Error", f"Failed to update database for '{model_short}'.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Download failed: {str(e)}")
+
+    def on_spacy_row_delete_clicked(self, model_short):
+        try:
+            model_short = (model_short or "").strip()
+            if not model_short:
+                messagebox.showerror("Error", "Invalid model name.")
+                return
+            # Soft delete and disable if currently enabled
+            if self.config_service.update_spacy_model_flags(model_short, downloaded=False, enabled=False):
+                self.config_service.load_config_from_database()
+                self._refresh_spacy_section()
+                messagebox.showinfo("Success", f"Model '{model_short}' marked as not downloaded.")
+            else:
+                messagebox.showerror("Error", f"Failed to update database for '{model_short}'.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Delete failed: {str(e)}")
+
+    def on_spacy_enabled_changed(self, selected_model_short):
+        try:
+            selected = (selected_model_short or "").strip()
+            if not selected:
+                return
+            # Enable selected and disable others (downloaded ones)
+            for m in list(getattr(self.config_service, 'spacyModels', [])):
+                short = m.get('modelShortName') or m.get('modelName') or ''
+                if not short:
+                    continue
+                if bool(m.get('downloaded')):
+                    self.config_service.update_spacy_model_flags(short, enabled=(short == selected))
+            self.config_service.load_config_from_database()
+            self._refresh_spacy_section()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update enabled model: {str(e)}")
+        
     def create_masking_card(self):
         """Create masking settings card"""
         content_frame = self.create_settings_card("Masking Settings", 350, 350)
@@ -660,7 +815,6 @@ class SettingsPage:
         # Clear previous children
         for child in getattr(self, 'ai_types_container', []).winfo_children() if hasattr(self, 'ai_types_container') else []:
             child.destroy()
-
         self._ai_type_vars = {}
         
         ai_types = self.config_service.aiProcessingTypes
@@ -685,18 +839,16 @@ class SettingsPage:
             # Info icon for description hover
             info_label = ctk.CTkLabel(
                 row, 
-                text="ⓘ", 
+                text="ⓘ",
                 font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), 
                 text_color="#4a90e2",
-                cursor="hand2"
+                height=25,
+                width=25
             )
             info_label.pack(side="left", padx=(0, 10))
             
-            # Create tooltip for the info icon (Balloon if available, otherwise Tooltip class)
-            if self.balloon is not None:
-                self.balloon.bind_widget(info_label, balloonmsg=description)
-            else:
-                Tooltip(info_label, description)
+            # Create tooltip with proper closure to capture the current short_description
+            ToolTipInfo(info_label, short_description)
 
             # Enabled checkbox
             enabled_var = tk.BooleanVar(value=enabled)
@@ -940,6 +1092,9 @@ class SettingsPage:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
 
+    def show_tooltip_info(self, widget, text):
+        tk.messagebox.showinfo("Info", text)
+    
     def show_menu(self):
         """Show a native dropdown menu under the Menu button"""
         try:

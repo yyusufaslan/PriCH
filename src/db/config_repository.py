@@ -228,6 +228,27 @@ class ConfigRepository:
         cur.close()
         return result
 
+    def update_spacy_model_flags(self, model_short_name, enabled=None, downloaded=None):
+        conn = self.db.connect()
+        cur = conn.cursor()
+        set_parts = []
+        values = []
+        if enabled is not None:
+            set_parts.append("enabled = ?")
+            values.append(enabled)
+        if downloaded is not None:
+            set_parts.append("downloaded = ?")
+            values.append(downloaded)
+        if not set_parts:
+            cur.close()
+            return False
+        set_clause = ', '.join(set_parts)
+        values.append(model_short_name)
+        cur.execute(f"UPDATE spacy_models SET {set_clause} WHERE model_short_name = ?", values)
+        conn.commit()
+        cur.close()
+        return True
+
     # Custom Terms CRUD
     def add_custom_term(self, term, replacement, spacy_model_id, enabled):
         conn = self.db.connect()

@@ -253,6 +253,25 @@ class ConfigService:
             print(f"Error getting config from database: {e}")
             return False
 
+    def update_spacy_model_flags(self, model_short_name: str, enabled: bool | None = None, downloaded: bool | None = None) -> bool:
+        """Update spaCy model flags in DB and reflect in-memory list."""
+        try:
+            updated = self.config_repository.update_spacy_model_flags(model_short_name, enabled=enabled, downloaded=downloaded)
+            if not updated:
+                return False
+            # Update in-memory representation
+            for model in self.spacyModels:
+                if model.get('modelShortName') == model_short_name:
+                    if enabled is not None:
+                        model['enabled'] = enabled
+                    if downloaded is not None:
+                        model['downloaded'] = downloaded
+                    break
+            return True
+        except Exception as e:
+            print(f"Error updating spaCy model '{model_short_name}': {e}")
+            return False
+
     # Helper methods for converting database tuples to dictionaries
     def _convert_ai_types_to_dict(self, ai_types):
         return [{'id': t[0], 'aiMaskOption': t[1], 'description': t[2], 'shortDescription': t[3], 'enabled': t[4]} for t in ai_types]
