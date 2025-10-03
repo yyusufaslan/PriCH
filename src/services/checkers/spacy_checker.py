@@ -2,6 +2,7 @@
 import sys
 import os
 import traceback
+import importlib.util
 
 try:
     import spacy
@@ -28,20 +29,114 @@ class SpacyChecker:
             except Exception as e:
                 print(f"Error loading spaCy model: {e}")
 
+    def is_model_installed(self, model_name: str) -> bool:
+        """Return True if the spaCy pipeline is installed in current env."""
+        if not SPACY_AVAILABLE:
+            return False
+        try:
+            import spacy.cli
+            info = spacy.cli.info()
+            pipelines = set((info or {}).get("pipelines", {}).keys())
+            return model_name in pipelines
+        except Exception:
+            # Fallback: attempt to import package
+            try:
+                __import__(model_name)
+                return True
+            except Exception:
+                return False
+
     def download_spacy_model(self, model_name):
         if not SPACY_AVAILABLE:
             print("SpaCy is not available. Cannot download model.")
             return False
-            
+
         import subprocess
         try:
             print(f"Downloading spaCy model: {model_name}")
             print(f"Using Python: {sys.executable}")
-            subprocess.run([sys.executable, "-m", "spacy", "download", model_name], check=True)
-            print(f"Downloaded spaCy model: {model_name} successfully.")
-            return True
+
+            # Skip if already installed
+            if self.is_model_installed(model_name):
+                print(f"spaCy model '{model_name}' already installed. Skipping download.")
+                return True
+
+            # Prefer spaCy CLI API first
+            try:
+                import spacy.cli
+                # Attempt download via spaCy's Python API (avoids shelling to pip directly)
+                try:
+                    spacy.cli.download(model_name)
+                except BaseException as be:  # catch SystemExit from spaCy CLI
+                    raise RuntimeError(f"spaCy CLI download aborted: {be}")
+                print(f"Downloaded spaCy model: {model_name} successfully (via spacy.cli).")
+                return True
+            except Exception as cli_err:
+                print(f"spaCy CLI download failed or not available: {cli_err}")
+                # Fall through to subprocess methods
+
+            # Ensure pip is available in this interpreter (fixes 'No module named pip')
+            if importlib.util.find_spec('pip') is None:
+                try:
+                    print("Bootstrapping pip via ensurepip...")
+                    subprocess.run([sys.executable, "-m", "ensurepip", "--upgrade"], check=True)
+                except Exception as ensure_err:
+                    print(f"Failed to bootstrap pip: {ensure_err}")
+
+            # Retry download using 'python -m spacy download ...'
+            result = subprocess.run([sys.executable, "-m", "spacy", "download", model_name], capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"Downloaded spaCy model: {model_name} successfully (via subprocess).")
+                return True
+            else:
+                print("spaCy download subprocess failed.")
+                print(f"stdout: {result.stdout}")
+                print(f"stderr: {result.stderr}")
+
+            # Final fallback: try installing the pip package directly (models are pip packages)
+            try:
+                pkg_name = model_name
+                print(f"Attempting direct pip install of model package: {pkg_name}")
+                subprocess.run([sys.executable, "-m", "pip", "install", pkg_name], check=True)
+                return True
+            except Exception as pip_err:
+                print(f"Direct pip install failed: {pip_err}")
+
+            return False
         except Exception as e:
             print(f"Error downloading spaCy model {model_name}: {str(e)}")
+            traceback.print_exc()
+            return False
+
+    def uninstall_spacy_model(self, model_name):
+        """Remove a spaCy model package from the current environment.
+        Uses pip uninstall if available; attempts to bootstrap pip if missing.
+        """
+        if not model_name:
+            print("No model name provided to uninstall.")
+            return False
+
+        import subprocess
+        try:
+            print(f"Uninstalling spaCy model: {model_name}")
+            # Ensure pip exists
+            if importlib.util.find_spec('pip') is None:
+                try:
+                    print("Bootstrapping pip via ensurepip for uninstall...")
+                    subprocess.run([sys.executable, "-m", "ensurepip", "--upgrade"], check=True)
+                except Exception as ensure_err:
+                    print(f"Failed to bootstrap pip: {ensure_err}")
+            # Uninstall non-interactively
+            result = subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", model_name], capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"Uninstalled spaCy model: {model_name}")
+                return True
+            print("pip uninstall failed.")
+            print(f"stdout: {result.stdout}")
+            print(f"stderr: {result.stderr}")
+            return False
+        except Exception as e:
+            print(f"Error uninstalling spaCy model {model_name}: {e}")
             traceback.print_exc()
             return False
 

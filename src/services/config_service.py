@@ -81,6 +81,21 @@ class ConfigService:
             spacy_models = self.config_repository.get_spacy_models()
             if spacy_models:
                 self.spacyModels = self._convert_spacy_models_to_dict(spacy_models)
+                # Sync 'downloaded' flags with environment to reflect reality
+                try:
+                    from src.services.checkers.spacy_checker import SpacyChecker
+                    checker = SpacyChecker()
+                    # Map by short name for quick lookup
+                    for model in self.spacyModels:
+                        short = model.get('modelShortName') or model.get('modelName')
+                        if not short:
+                            continue
+                        installed = checker.is_model_installed(short)
+                        if bool(model.get('downloaded')) != installed:
+                            # Update DB and memory to match installed state
+                            self.update_spacy_model_flags(short, downloaded=installed)
+                except Exception as sync_err:
+                    print(f"Warning: failed to sync spaCy models with environment: {sync_err}")
             
             # Load custom terms
             custom_terms = self.config_repository.get_custom_terms()

@@ -33,6 +33,36 @@ class SettingsPage:
         # Create settings cards
         self.create_settings_cards()
 
+    def _save_config_silent(self):
+        # Persist to database without UI dialogs
+        try:
+            self.config_service.save_config_to_database()
+        except Exception as e:
+            print(f"Settings autosave failed: {e}")
+
+    def _set_and_save(self, attribute_name, value):
+        # Update a config attribute and persist to DB
+        try:
+            setattr(self.config_service, attribute_name, value)
+            self._save_config_silent()
+        except Exception as e:
+            print(f"Failed to set '{attribute_name}' to '{value}': {e}")
+
+    def _on_text_change(self, tk_var, attribute_name):
+        # Persist text changes immediately
+        try:
+            self._set_and_save(attribute_name, tk_var.get())
+        except Exception as e:
+            print(f"Autosave text change failed for {attribute_name}: {e}")
+
+    def _on_int_entry_change(self, tk_var, attribute_name):
+        # Persist integer entry changes if valid
+        try:
+            value = int(tk_var.get())
+        except Exception:
+            return
+        self._set_and_save(attribute_name, value)
+
     def create_header(self):
         """Create the header section with title and buttons"""
         # Main header container
@@ -129,11 +159,13 @@ class SettingsPage:
         self.disable_masking_var = tk.BooleanVar(value=self.config_service.disable_masking)
         disable_masking_cb = self.create_checkbox(content_frame, "Disable Masking", self.disable_masking_var)
         disable_masking_cb.pack(anchor="w", pady=2)
+        disable_masking_cb.configure(command=lambda: self._set_and_save('disable_masking', bool(self.disable_masking_var.get())))
         
         # Dark mode
         self.dark_mode_var = tk.BooleanVar(value=self.config_service.darkMode)
         dark_mode_cb = self.create_checkbox(content_frame, "Dark Mode", self.dark_mode_var)
         dark_mode_cb.pack(anchor="w", pady=2)
+        dark_mode_cb.configure(command=lambda: self._set_and_save('darkMode', bool(self.dark_mode_var.get())))
                 
     def create_spacy_card(self):
         """Create spacy settings card, list all spacy models, download, enable just one model, delete model"""
@@ -280,10 +312,24 @@ class SettingsPage:
         self.create_spacy_models_list(self.spacy_models_list_frame.master)
 
     def on_spacy_row_download_clicked(self, model_short):
+        print(f"on_spacy_row_download_clicked: {model_short}")
         try:
             model_short = (model_short or "").strip()
             if not model_short:
                 messagebox.showerror("Error", "Invalid model name.")
+                return
+            # Check availability first to avoid redundant downloads
+            try:
+                from src.services.checkers.spacy_checker import SpacyChecker
+                _checker = SpacyChecker()
+                if _checker.is_model_installed(model_short):
+                    messagebox.showinfo("Info", f"Model '{model_short}' is already installed.")
+                    return
+            except Exception:
+                pass
+            # Ask for confirmation
+            confirm = messagebox.askyesno("Confirm Download", f"Are you sure you want to download spaCy model '{model_short}'?")
+            if not confirm:
                 return
             from src.services.checkers.spacy_checker import SpacyChecker
             checker = SpacyChecker()
@@ -305,6 +351,14 @@ class SettingsPage:
             model_short = (model_short or "").strip()
             if not model_short:
                 messagebox.showerror("Error", "Invalid model name.")
+                return
+            # Prevent deleting default model
+            if model_short == "en_core_web_sm":
+                messagebox.showwarning("Not Allowed", "The default model 'en_core_web_sm' cannot be deleted.")
+                return
+            # Ask for confirmation
+            confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete spaCy model '{model_short}'?")
+            if not confirm:
                 return
             # Soft delete and disable if currently enabled
             if self.config_service.update_spacy_model_flags(model_short, downloaded=False, enabled=False):
@@ -343,6 +397,7 @@ class SettingsPage:
         self.email_enabled_var = tk.BooleanVar(value=self.config_service.email_enabled)
         email_cb = self.create_checkbox(content_frame, "Enable Email Masking", self.email_enabled_var)
         email_cb.pack(anchor="w", pady=2)
+        email_cb.configure(command=lambda: self._set_and_save('email_enabled', bool(self.email_enabled_var.get())))
         
         # Email mask type mapping
         self.email_mask_options = ["None", "Asterisk", "Defined Text", "Partial"]
@@ -366,6 +421,8 @@ class SettingsPage:
         self.email_defined_text_frame = self.create_input_field(content_frame, "Defined Text:", 
                                self.email_defined_text_var,
                                "email_defined_text_var")
+        # Autosave on email defined text change
+        self.email_defined_text_var.trace("w", lambda *args: self._on_text_change(self.email_defined_text_var, 'email_defined_text'))
         
         # Initially hide email defined text if not "Defined Text"
         if email_display_text != "Defined Text":
@@ -377,6 +434,7 @@ class SettingsPage:
         self.phone_enabled_var = tk.BooleanVar(value=self.config_service.phone_enabled)
         phone_cb = self.create_checkbox(content_frame, "Enable Phone Masking", self.phone_enabled_var)
         phone_cb.pack(anchor="w", pady=2)
+        phone_cb.configure(command=lambda: self._set_and_save('phone_enabled', bool(self.phone_enabled_var.get())))
         
         # Phone mask type mapping
         self.phone_mask_options = ["None", "Asterisk", "Defined Text", "Partial"]
@@ -400,6 +458,8 @@ class SettingsPage:
         self.phone_defined_text_frame = self.create_input_field(content_frame, "Defined Text:", 
                                self.phone_defined_text_var,
                                "phone_defined_text_var")
+        # Autosave on phone defined text change
+        self.phone_defined_text_var.trace("w", lambda *args: self._on_text_change(self.phone_defined_text_var, 'phone_defined_text'))
         
         # Initially hide phone defined text if not "Defined Text"
         if phone_display_text != "Defined Text":
@@ -411,26 +471,17 @@ class SettingsPage:
         self.create_input_field(content_frame, "AI Processing:", 
                                tk.StringVar(value=str(self.config_service.min_char_lenght_ai)),
                                "min_char_ai_var")
+        self.min_char_ai_var.trace("w", lambda *args: self._on_int_entry_change(self.min_char_ai_var, 'min_char_lenght_ai'))
         
         self.create_input_field(content_frame, "Code:", 
                                tk.StringVar(value=str(self.config_service.min_char_lenght_code)),
                                "min_char_code_var")
+        self.min_char_code_var.trace("w", lambda *args: self._on_int_entry_change(self.min_char_code_var, 'min_char_lenght_code'))
         
         self.create_input_field(content_frame, "Custom Regex:", 
                                tk.StringVar(value=str(self.config_service.min_char_lenght_custom_regex)),
                                "min_char_regex_var")
-        
-        # Save button for masking settings
-        save_button = ctk.CTkButton(
-            content_frame,
-            text="Save Masking Settings",
-            command=self.save_masking_settings,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            fg_color="#4a90e2",
-            hover_color="#357abd",
-            height=30
-        )
-        save_button.pack(pady=(15, 5))
+        self.min_char_regex_var.trace("w", lambda *args: self._on_int_entry_change(self.min_char_regex_var, 'min_char_lenght_custom_regex'))
 
     def create_ai_card(self):
         """Create AI settings card"""
@@ -440,11 +491,13 @@ class SettingsPage:
         self.ai_enabled_var = tk.BooleanVar(value=self.config_service.ai_enabled)
         ai_cb = self.create_checkbox(content_frame, "Enable AI Processing", self.ai_enabled_var)
         ai_cb.pack(anchor="w", pady=2)
+        ai_cb.configure(command=lambda: self._set_and_save('ai_enabled', bool(self.ai_enabled_var.get())))
         
         # Unmask manual
         self.unmask_manual_var = tk.BooleanVar(value=self.config_service.unMaskManual)
         unmask_cb = self.create_checkbox(content_frame, "Manual Unmasking Only", self.unmask_manual_var)
         unmask_cb.pack(anchor="w", pady=2)
+        unmask_cb.configure(command=lambda: self._set_and_save('unMaskManual', bool(self.unmask_manual_var.get())))
         
         # AI Processing Types section
         self.create_section_label(content_frame, "AI Processing Types")
@@ -484,6 +537,7 @@ class SettingsPage:
         self.trusted_enabled_var = tk.BooleanVar(value=self.config_service.trusted_programs_enabled)
         trusted_cb = self.create_checkbox(content_frame, "Enable Trusted Programs", self.trusted_enabled_var)
         trusted_cb.pack(anchor="w", pady=2)
+        trusted_cb.configure(command=lambda: self._set_and_save('trusted_programs_enabled', bool(self.trusted_enabled_var.get())))
         
         # Trusted Programs section
         self.create_section_label(content_frame, "Trusted Programs")
@@ -562,6 +616,7 @@ class SettingsPage:
         self.regex_enabled_var = tk.BooleanVar(value=self.config_service.custom_regex_enabled)
         regex_cb = self.create_checkbox(content_frame, "Enable Custom Regex", self.regex_enabled_var)
         regex_cb.pack(anchor="w", pady=2)
+        regex_cb.configure(command=lambda: self._set_and_save('custom_regex_enabled', bool(self.regex_enabled_var.get())))
         
         # Priority settings section
         self.create_section_label(content_frame, "Priority Settings")
@@ -569,10 +624,12 @@ class SettingsPage:
         self.regex_priority_ai_var = tk.BooleanVar(value=self.config_service.custom_regex_first_priority_for_ai)
         priority_ai_cb = self.create_checkbox(content_frame, "Custom Regex First Priority for AI", self.regex_priority_ai_var)
         priority_ai_cb.pack(anchor="w", pady=2)
+        priority_ai_cb.configure(command=lambda: self._set_and_save('custom_regex_first_priority_for_ai', bool(self.regex_priority_ai_var.get())))
         
         self.regex_priority_code_var = tk.BooleanVar(value=self.config_service.custom_regex_first_priority_for_code)
         priority_code_cb = self.create_checkbox(content_frame, "Custom Regex First Priority for Code", self.regex_priority_code_var)
         priority_code_cb.pack(anchor="w", pady=2)
+        priority_code_cb.configure(command=lambda: self._set_and_save('custom_regex_first_priority_for_code', bool(self.regex_priority_code_var.get())))
         
         # Custom Regex Patterns section
         self.create_section_label(content_frame, "Custom Regex Patterns")
@@ -626,21 +683,21 @@ class SettingsPage:
         checkboxes_frame.pack(side="left")
         
         # Enabled checkbox
-        self.regex_enabled_var = tk.BooleanVar(value=True)
+        self.new_regex_enabled_var = tk.BooleanVar(value=True)
         enabled_cb = ctk.CTkCheckBox(
             checkboxes_frame,
             text="Enabled",
-            variable=self.regex_enabled_var,
+            variable=self.new_regex_enabled_var,
             font=ctk.CTkFont(family="Segoe UI", size=10)
         )
         enabled_cb.pack(side="left", padx=(0, 15))
         
         # Priority checkbox
-        self.regex_priority_var = tk.BooleanVar(value=False)
+        self.new_regex_priority_var = tk.BooleanVar(value=False)
         priority_cb = ctk.CTkCheckBox(
             checkboxes_frame,
             text="First Priority",
-            variable=self.regex_priority_var,
+            variable=self.new_regex_priority_var,
             font=ctk.CTkFont(family="Segoe UI", size=10)
         )
         priority_cb.pack(side="left")
@@ -690,6 +747,7 @@ class SettingsPage:
         self.code_enabled_var = tk.BooleanVar(value=self.config_service.code_protection_enabled)
         code_cb = self.create_checkbox(content_frame, "Enable Code Protection", self.code_enabled_var)
         code_cb.pack(anchor="w", pady=2)
+        code_cb.configure(command=lambda: self._set_and_save('code_protection_enabled', bool(self.code_enabled_var.get())))
         
         # Code Protection Types section
         self.create_section_label(content_frame, "Code Protection Types")
@@ -893,7 +951,6 @@ class SettingsPage:
         for program in filtered_programs:
             name = program.get('programName')
             enabled = bool(program.get('enabled'))
-            deleted = bool(program.get('deleted'))
 
             row = ctk.CTkFrame(self.trusted_programs_container, fg_color="#404040")
             row.pack(fill="x", pady=2)
@@ -901,17 +958,47 @@ class SettingsPage:
             name_label = ctk.CTkLabel(row, text=name, font=ctk.CTkFont(family="Segoe UI", size=10), text_color="white")
             name_label.pack(side="left")
 
+            # Delete button (destructive action)
+            """delete_btn = ctk.CTkButton(
+                row,
+                text="Delete",
+                command=lambda pn=name: self.on_delete_trusted_program(pn),
+                font=ctk.CTkFont(family="Segoe UI", size=9),
+                width=70,
+                height=25,
+                fg_color="#8a2c2c",
+                hover_color="#6f2323",
+            )
+            delete_btn.pack(side="right", padx=(10, 0))"""
+
             enabled_var = tk.BooleanVar(value=enabled)
             enabled_cb = self.create_checkbox(row, "Enabled", enabled_var)
             enabled_cb.configure(command=lambda pn=name, v=enabled_var: self.on_toggle_trusted_program_enabled(pn, v))
             enabled_cb.pack(side="right", padx=(10, 0))
 
-            deleted_var = tk.BooleanVar(value=deleted)
-            deleted_cb = self.create_checkbox(row, "Deleted", deleted_var)
-            deleted_cb.configure(command=lambda pn=name, v=deleted_var: self.on_toggle_trusted_program_deleted(pn, v))
-            deleted_cb.pack(side="right", padx=(10, 0))
+            self._trusted_vars[name] = {"enabled": enabled_var}
 
-            self._trusted_vars[name] = {"enabled": enabled_var, "deleted": deleted_var}
+    def on_delete_trusted_program(self, program_name: str):
+        """Ask for confirmation and mark the trusted program as deleted (and disabled)."""
+        try:
+            if not program_name:
+                return
+            confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{program_name}'?")
+            if not confirm:
+                return
+            success = self.config_service.update_trusted_program(program_name, deleted=True, enabled=False)
+            if not success:
+                messagebox.showerror("Error", f"Failed to delete '{program_name}'.")
+                return
+            # Update UI vars if present
+            if hasattr(self, '_trusted_vars') and program_name in self._trusted_vars:
+                vars_pair = self._trusted_vars.get(program_name, {})
+                if 'enabled' in vars_pair:
+                    vars_pair['enabled'].set(False)
+            # Persist silently
+            self._save_config_silent()
+        except Exception as e:
+            messagebox.showerror("Error", f"Delete failed: {str(e)}")
 
     def on_toggle_trusted_program_enabled(self, program_name: str, var: tk.BooleanVar):
         new_value = bool(var.get())
@@ -919,13 +1006,6 @@ class SettingsPage:
         if not success:
             var.set(not new_value)
             messagebox.showerror("Error", f"Failed to update '{program_name}' enabled flag.")
-
-    def on_toggle_trusted_program_deleted(self, program_name: str, var: tk.BooleanVar):
-        new_value = bool(var.get())
-        success = self.config_service.update_trusted_program(program_name, deleted=new_value)
-        if not success:
-            var.set(not new_value)
-            messagebox.showerror("Error", f"Failed to update '{program_name}' deleted flag.")
 
     def on_trusted_search_changed(self, *args):
         """Handle search input changes"""
@@ -1154,6 +1234,14 @@ class SettingsPage:
             self.email_defined_text_frame.pack(fill="x", pady=2, after=self.email_combobox_frame)
         else:
             self.email_defined_text_frame.pack_forget()
+        # Persist selection
+        try:
+            selected_text = self.email_mask_type_var.get()
+            index = self.email_mask_options.index(selected_text) if selected_text in self.email_mask_options else 0
+            numeric_value = self.email_mask_values[index]
+            self._set_and_save('email_mask_type', numeric_value)
+        except Exception as e:
+            print(f"Failed to save email mask type: {e}")
 
     def on_phone_mask_type_changed(self, selected_value):
         """Handle phone mask type selection change"""
@@ -1162,6 +1250,14 @@ class SettingsPage:
             self.phone_defined_text_frame.pack(fill="x", pady=2, after=self.phone_combobox_frame)
         else:
             self.phone_defined_text_frame.pack_forget()
+        # Persist selection
+        try:
+            selected_text = self.phone_mask_type_var.get()
+            index = self.phone_mask_options.index(selected_text) if selected_text in self.phone_mask_options else 0
+            numeric_value = self.phone_mask_values[index]
+            self._set_and_save('phone_mask_type', numeric_value)
+        except Exception as e:
+            print(f"Failed to save phone mask type: {e}")
 
     def save_masking_settings(self):
         """Save masking settings to database"""
@@ -1233,8 +1329,8 @@ class SettingsPage:
         self.regex_entry.delete(0, "end")
         self.replacement_entry.delete(0, "end")
         self.apply_for_entry.delete(0, "end")
-        self.regex_enabled_var.set(True)
-        self.regex_priority_var.set(False)
+        self.new_regex_enabled_var.set(True)
+        self.new_regex_priority_var.set(False)
 
     def save_new_regex_pattern_inline(self):
         """Save new regex pattern from inline form"""
@@ -1242,8 +1338,8 @@ class SettingsPage:
             regex = self.regex_entry.get().strip()
             replacement = self.replacement_entry.get().strip()
             apply_for = self.apply_for_entry.get().strip()
-            enabled = self.regex_enabled_var.get()
-            priority = self.regex_priority_var.get()
+            enabled = self.new_regex_enabled_var.get()
+            priority = self.new_regex_priority_var.get()
             
             if not regex:
                 messagebox.showerror("Error", "Regex pattern is required!")
